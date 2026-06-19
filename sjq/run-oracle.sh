@@ -2,7 +2,7 @@
 set -e
 
 SJQ="./bin/main"
-JQ="jq"
+JQ="jq -c"
 
 # Helper to compare sjq and jq output
 compare_outputs() {
