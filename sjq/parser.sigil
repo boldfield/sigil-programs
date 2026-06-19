@@ -44,11 +44,12 @@ fn parse(tokens: List[Token]) -> Filter ![] {
           _ => Field(name),
         },
         Cons(LBracket, bracket_rest) => {
-          let (bracket_filter, remaining): (Filter, List[Token]) = parse_index_or_iterate(bracket_rest);
-          match remaining {
-            Nil => bracket_filter,
-            Cons(Dot, field_rest) => Pipe(bracket_filter, parse_field_chain(field_rest)),
-            _ => bracket_filter,
+          match parse_index_or_iterate(bracket_rest) {
+            (bracket_filter, remaining) => match remaining {
+              Nil => bracket_filter,
+              Cons(Dot, field_rest) => Pipe(bracket_filter, parse_field_chain(field_rest)),
+              _ => bracket_filter,
+            },
           }
         },
         _ => Identity,
