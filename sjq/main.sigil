@@ -3,21 +3,22 @@ import std.env
 import std.fs
 import std.json
 use std.io.{IO};
-use std.env.{Env};
-use std.fs.{Fs};
-use std.json.{json_parse, json_render};
+use std.env.{env_args};
+use std.fs.{read_file};
+use std.json.{json_parse, json_render, JValue};
+use std.string.{string_to_bytes};
 
 fn read_stdin_helper(acc: String) -> String ![IO] {
-  match IO.read_line() {
-    Ok(line) => {
-      let new_acc = if acc == "" then line else acc ++ "\n" ++ line;
-      perform read_stdin_helper(new_acc)
-    },
-    Err(_) => acc
+  let line = perform IO.read_line();
+  if line == "" {
+    acc
+  } else {
+    let new_acc = if acc == "" then line else acc ++ "\n" ++ line;
+    read_stdin_helper(new_acc)
   }
 }
 
-fn process_json(filter: String, value: JValue) -> Int ![IO] {
+fn process_json(filter: String, value: JValue) -> Int ![IO, Mem] {
   if filter == "." {
     let rendered = json_render(value);
     perform IO.println(rendered);
@@ -28,19 +29,23 @@ fn process_json(filter: String, value: JValue) -> Int ![IO] {
   }
 }
 
-fn main() -> Int ![IO] {
-  let args = Env.args;
+fn main() -> Int ![IO, Mem, Env, Fs] {
+  let args = env_args();
 
   match args {
     [] => {
       perform IO.println("sjq: filter expression required");
       1
     },
-    [filter] => {
-      let input_text = perform read_stdin_helper("");
-      match json_parse(input_text) {
+    [_] => {
+      perform IO.println("sjq: filter expression required");
+      1
+    },
+    [_, filter] => {
+      let input_text = read_stdin_helper("");
+      match json_parse(string_to_bytes(input_text)) {
         Ok(value) => {
-          perform process_json(filter, value)
+          process_json(filter, value)
         },
         Err(_) => {
           perform IO.println("sjq: JSON parse error");
@@ -48,12 +53,12 @@ fn main() -> Int ![IO] {
         }
       }
     },
-    [filter, filename] => {
-      match Fs.read_file(filename) {
+    [_, filter, filename] => {
+      match read_file(filename) {
         Ok(input_text) => {
-          match json_parse(input_text) {
+          match json_parse(string_to_bytes(input_text)) {
             Ok(value) => {
-              perform process_json(filter, value)
+              process_json(filter, value)
             },
             Err(_) => {
               perform IO.println("sjq: JSON parse error");
