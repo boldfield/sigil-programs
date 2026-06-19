@@ -5,7 +5,7 @@ import std.option
 import std.ordering
 use ast.{Filter};
 use std.json.{JValue, JNull, JArray, JList, JLNil, JLCons, JObject, JONil, JOCons};
-use std.list.{List, Nil, Cons};
+use std.list.{List, Nil, Cons, append};
 use std.option.{Option, None, Some};
 use std.ordering.{Ordering, Equal, string_compare};
 
@@ -57,6 +57,17 @@ fn jobject_values(obj: JObject) -> List[JValue] ![] {
   }
 }
 
+fn eval_pipe_helper(filter_b: Filter, values: List[JValue]) -> List[JValue] ![] {
+  match values {
+    Nil => Nil,
+    Cons(v, rest) => {
+      let results_for_v: List[JValue] = eval(filter_b, v);
+      let rest_results: List[JValue] = eval_pipe_helper(filter_b, rest);
+      append(results_for_v, rest_results)
+    },
+  }
+}
+
 fn eval(filter: Filter, input: JValue) -> List[JValue] ![] {
   match filter {
     Identity => Cons(input, Nil),
@@ -91,7 +102,10 @@ fn eval(filter: Filter, input: JValue) -> List[JValue] ![] {
         _ => panic("cannot iterate over non-array/object"),
       }
     },
-    Pipe(_, _) => panic("not yet supported: Pipe"),
+    Pipe(a, b) => {
+      let first_results: List[JValue] = eval(a, input);
+      eval_pipe_helper(b, first_results)
+    },
     Length => panic("not yet supported: Length"),
     Keys => panic("not yet supported: Keys"),
     Select(_) => panic("not yet supported: Select"),
