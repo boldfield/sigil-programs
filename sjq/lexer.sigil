@@ -1,60 +1,62 @@
 import ast
 import std.string
 import std.list
+import std.char
 use ast.{Token, Dot, Identifier};
-use std.string.{String};
-use std.list.{List};
+use std.list.{append, Cons, Nil};
+use std.char.{is_ascii_alpha, is_ascii_digit};
 
-fn is_identifier_char(c: String) -> Bool {
-  let code = String.char_code_at(c, 0);
-  (code >= 48 && code <= 57) ||     // 0-9
-  (code >= 65 && code <= 90) ||     // A-Z
-  (code >= 97 && code <= 122) ||    // a-z
-  code == 95                         // _
+fn is_identifier_char(c: Char) -> Bool {
+  is_ascii_alpha(c) || is_ascii_digit(c) || c == '_'
 }
 
-fn lex_identifier(s: String, pos: Int) -> {String, Int} {
-  let len = String.length(s);
-  fn lex_identifier_loop(p: Int, acc: String) -> {String, Int} {
-    if p >= len {
-      {acc, p}
-    } else {
-      let c = String.get(s, p);
-      if is_identifier_char(c) {
-        lex_identifier_loop(p + 1, String.append(acc, c))
-      } else {
-        {acc, p}
+fn lex_identifier(s: String, pos: Int, acc: String) -> (String, Int) {
+  let len = string_length(s);
+  if pos >= len {
+    (acc, pos)
+  } else {
+    match string_char_at(s, pos) {
+      None => (acc, pos)
+      Some(c) => {
+        if is_identifier_char(c) {
+          let next_acc = string_concat(acc, c);
+          lex_identifier(s, pos + 1, next_acc)
+        } else {
+          (acc, pos)
+        }
       }
     }
-  };
-  lex_identifier_loop(pos, "")
+  }
 }
 
 type LexResult =
   | Ok(List[Token])
   | Error(String)
 
-fn lex(s: String) -> LexResult {
-  let len = String.length(s);
-
-  fn lex_loop(pos: Int, tokens: List[Token]) -> LexResult {
-    if pos >= len {
-      Ok(tokens)
-    } else {
-      let c = String.get(s, pos);
-
-      if c == "." {
-        let new_tokens = List.append(tokens, Dot);
-        lex_loop(pos + 1, new_tokens)
-      } else if is_identifier_char(c) {
-        let {ident, new_pos} = lex_identifier(s, pos);
-        let new_tokens = List.append(tokens, Identifier(ident));
-        lex_loop(new_pos, new_tokens)
-      } else {
-        Error(String.append("Unexpected character: ", c))
+fn lex_loop(s: String, pos: Int, len: Int, tokens: List[Token]) -> LexResult {
+  if pos >= len {
+    Ok(tokens)
+  } else {
+    match string_char_at(s, pos) {
+      None => Ok(tokens)
+      Some(c) => {
+        if c == '.' {
+          let new_tokens = append(tokens, Cons(Dot, Nil));
+          lex_loop(s, pos + 1, len, new_tokens)
+        } else if is_identifier_char(c) {
+          let (ident, new_pos) = lex_identifier(s, pos, "");
+          let new_tokens = append(tokens, Cons(Identifier(ident), Nil));
+          lex_loop(s, new_pos, len, new_tokens)
+        } else {
+          let msg = string_concat("Unexpected character: ", c);
+          Error(msg)
+        }
       }
     }
-  };
+  }
+}
 
-  lex_loop(0, [])
+fn lex(s: String) -> LexResult {
+  let len = string_length(s);
+  lex_loop(s, 0, len, Nil)
 }
