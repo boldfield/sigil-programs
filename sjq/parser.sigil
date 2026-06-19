@@ -1,6 +1,8 @@
 import std.io
+import std.ordering
 import ast
 use std.io.{IO};
+use std.ordering.{Ordering, string_compare, Equal};
 use ast.{Token, Filter};
 
 fn parse_field_chain(tokens: List[Token]) -> Filter ![] {
@@ -36,6 +38,7 @@ fn parse_primary(tokens: List[Token]) -> (Filter, List[Token]) ![] {
   match tokens {
     Nil => (Identity, Nil),
     Cons(first, rest) => match first {
+      Identifier(name) => parse_identifier(name, rest, tokens),
       Dot => match rest {
         Nil => (Identity, Nil),
         Cons(Identifier(name), next_rest) => match next_rest {
@@ -58,6 +61,61 @@ fn parse_primary(tokens: List[Token]) -> (Filter, List[Token]) ![] {
       },
       _ => (Identity, tokens),
     },
+  }
+}
+
+fn parse_identifier(name: String, rest: List[Token], original_tokens: List[Token]) -> (Filter, List[Token]) ![] {
+  match string_compare(name, "length") {
+    Equal => (Length, rest),
+    _ => match string_compare(name, "keys") {
+      Equal => (Keys, rest),
+      _ => match string_compare(name, "select") {
+        Equal => match rest {
+          Cons(LParen, inner_tokens) => {
+            match parse_select_inner(inner_tokens) {
+              (filter, remaining) => (Select(filter), remaining),
+            }
+          },
+          _ => (Identity, original_tokens),
+        },
+        _ => (Identity, original_tokens),
+      },
+    },
+  }
+}
+
+fn parse_select_inner(tokens: List[Token]) -> (Filter, List[Token]) ![] {
+  match collect_until_rparen(tokens, 0, Nil) {
+    (inner_tokens, remaining) => {
+      match parse(inner_tokens) {
+        filter => (filter, remaining),
+      }
+    },
+  }
+}
+
+fn collect_until_rparen(tokens: List[Token], depth: Int, acc: List[Token]) -> (List[Token], List[Token]) ![] {
+  match tokens {
+    Nil => (__reverse_collected(acc), Nil),
+    Cons(RParen, rest) => {
+      match depth {
+        0 => (__reverse_collected(acc), rest),
+        _ => collect_until_rparen(rest, depth - 1, Cons(RParen, acc)),
+      }
+    },
+    Cons(LParen, rest) => collect_until_rparen(rest, depth + 1, Cons(LParen, acc)),
+    Cons(h, rest) => collect_until_rparen(rest, depth, Cons(h, acc)),
+  }
+}
+
+fn __reverse_collected(tokens: List[Token]) -> List[Token] ![] {
+  __reverse_impl_collected(tokens, Nil)
+}
+
+fn __reverse_impl_collected(xs: List[Token], acc: List[Token]) -> List[Token] ![] {
+  match xs {
+    Nil => acc,
+    Cons(h, t) => __reverse_impl_collected(t, Cons(h, acc)),
   }
 }
 

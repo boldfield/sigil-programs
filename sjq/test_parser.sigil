@@ -49,5 +49,17 @@ fn main() -> Int ![IO] {
   let result_dot_foo_pipe_dot_bar: Filter = parse(dot_foo_pipe_dot_bar);
   perform IO.println(string_concat("parse([Dot, Identifier(\"foo\"), PipeTok, Dot, Identifier(\"bar\")]) = ", render_filter(result_dot_foo_pipe_dot_bar)));
 
+  let length_tok: List[Token] = Cons(Identifier("length"), Nil);
+  let result_length: Filter = parse(length_tok);
+  perform IO.println(string_concat("parse([Identifier(\"length\")]) = ", render_filter(result_length)));
+
+  let keys_tok: List[Token] = Cons(Identifier("keys"), Nil);
+  let result_keys: Filter = parse(keys_tok);
+  perform IO.println(string_concat("parse([Identifier(\"keys\")]) = ", render_filter(result_keys)));
+
+  let select_foo: List[Token] = Cons(Identifier("select"), Cons(LParen, Cons(Dot, Cons(Identifier("foo"), Cons(RParen, Nil)))));
+  let result_select_foo: Filter = parse(select_foo);
+  perform IO.println(string_concat("parse([Identifier(\"select\"), LParen, Dot, Identifier(\"foo\"), RParen]) = ", render_filter(result_select_foo)));
+
   0
 }
