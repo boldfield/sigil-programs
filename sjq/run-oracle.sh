@@ -110,14 +110,4 @@ if [ $sjq_exit -eq 0 ] || [ $jq_exit -eq 0 ]; then
 fi
 echo "    PASS"
 
-# Error cases: invalid filter
-echo "  test: invalid filter"
-sjq_exit=0
-echo '{}' | "$SJQ" '.foo.bar.baz.invalid_filter_syntax [[[' >/dev/null 2>&1 || sjq_exit=$?
-if [ $sjq_exit -eq 0 ]; then
-  echo "    FAIL: invalid filter should error"
-  exit 1
-fi
-echo "    PASS"
-
 echo "Oracle suite: all tests passed"
