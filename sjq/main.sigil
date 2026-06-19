@@ -12,11 +12,8 @@ use std.byte_array.{string_to_bytes};
 fn read_stdin_helper(acc: String) -> String ![IO] {
   match IO.read_line() {
     Ok(line) => {
-      if line == "" {
-        acc
-      } else {
-        read_stdin_helper(if acc == "" { line } else { acc ++ "\n" ++ line })
-      }
+      let next_acc: String = if acc == "" { line } else { acc ++ "\n" ++ line };
+      read_stdin_helper(next_acc)
     },
     Err(_) => acc
   }
@@ -55,8 +52,8 @@ fn main() -> Int ![IO, Mem, Env, Fs] {
     },
     [_, filter, filename] => {
       match read_file(filename) {
-        Ok(input_text) => {
-          match json_parse(string_to_bytes(input_text)) {
+        Ok(input_bytes) => {
+          match json_parse(input_bytes) {
             Ok(value) => {
               process_json(filter, value)
             },
