@@ -1,0 +1,43 @@
+import std.io
+import std.list
+import ast
+import lexer
+use std.io.{IO};
+use std.list.{Cons, List, Nil};
+use ast.{Token};
+use lexer.{lex};
+
+fn render_token(t: Token) -> String ![] {
+  match t {
+    Dot => "Dot",
+    Identifier(s) => s,
+    LBracket => "[",
+    RBracket => "]",
+    LParen => "(",
+    RParen => ")",
+    Integer(n) => int_to_string(n),
+    PipeTok => "|",
+  }
+}
+
+fn print_tokens(tokens: List[Token]) -> Int ![IO] {
+  match tokens {
+    Nil => 0,
+    Cons(t, rest) => {
+      perform IO.println(render_token(t));
+      print_tokens(rest)
+    },
+  }
+}
+
+fn main() -> Int ![IO] {
+  let tokens1: List[Token] = lex(".");
+  perform IO.println("Lexing '.':");
+  let _: Int = print_tokens(tokens1);
+
+  let tokens2: List[Token] = lex(".foo");
+  perform IO.println("Lexing '.foo':");
+  let _: Int = print_tokens(tokens2);
+
+  0
+}

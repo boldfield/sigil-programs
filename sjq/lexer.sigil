@@ -1,0 +1,73 @@
+import std.char
+import std.list
+import std.string
+import ast
+use std.char.{is_ascii_alpha, is_ascii_alphanumeric, char_to_string, char_eq};
+use std.list.{Cons, List, Nil};
+use std.string.{string_chars, string_concat};
+use ast.{Token};
+
+fn is_id_start(c: Char) -> Bool ![] {
+  match is_ascii_alpha(c) {
+    true => true,
+    false => char_eq(c, '_'),
+  }
+}
+
+fn is_id_continue(c: Char) -> Bool ![] {
+  match is_ascii_alphanumeric(c) {
+    true => true,
+    false => char_eq(c, '_'),
+  }
+}
+
+fn lex(input: String) -> List[Token] ![] {
+  let chars: List[Char] = string_chars(input);
+  let tokens: List[Token] = __lex_chars(chars, Nil);
+  __reverse_tokens(tokens)
+}
+
+fn __lex_chars(chars: List[Char], acc: List[Token]) -> List[Token] ![] {
+  match chars {
+    Nil => acc,
+    Cons(c, rest) => {
+      match c {
+        '.' => __lex_chars(rest, Cons(Dot, acc)),
+        _ => {
+          match is_id_start(c) {
+            true => {
+              let id_result: (String, List[Char]) = __read_identifier(rest, char_to_string(c));
+              match id_result {
+                (id, remaining) => __lex_chars(remaining, Cons(Identifier(id), acc)),
+              }
+            },
+            false => __lex_chars(rest, acc),
+          }
+        },
+      }
+    },
+  }
+}
+
+fn __read_identifier(chars: List[Char], acc: String) -> (String, List[Char]) ![] {
+  match chars {
+    Nil => (acc, Nil),
+    Cons(c, rest) => {
+      match is_id_continue(c) {
+        true => __read_identifier(rest, string_concat(acc, char_to_string(c))),
+        false => (acc, chars),
+      }
+    },
+  }
+}
+
+fn __reverse_tokens(tokens: List[Token]) -> List[Token] ![] {
+  __reverse_impl(tokens, Nil)
+}
+
+fn __reverse_impl(xs: List[Token], acc: List[Token]) -> List[Token] ![] {
+  match xs {
+    Nil => acc,
+    Cons(h, t) => __reverse_impl(t, Cons(h, acc)),
+  }
+}
