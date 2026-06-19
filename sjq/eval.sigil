@@ -9,7 +9,7 @@ use std.json.{JValue, JNull, JArray, JList, JLNil, JLCons, JObject, JONil, JOCon
 use std.list.{List, Nil, Cons, append, length as list_length, range, list_sort_string};
 use std.option.{Option, None, Some};
 use std.ordering.{Ordering, Equal, string_compare};
-use std.string.{string_length, string_chars, string_from_chars};
+use std.string.{string_length};
 
 fn lookup_field(key: String, obj: JObject) -> Option[JValue] ![] {
   match obj {
@@ -148,7 +148,7 @@ fn eval(filter: Filter, input: JValue) -> List[JValue] ![] {
         JArray(jlist) => Cons(JInt(jlist_length(jlist)), Nil),
         JObject(obj) => Cons(JInt(jobject_length(obj)), Nil),
         JString(s) => Cons(JInt(string_length(s)), Nil),
-        JNull => Cons(JNull, Nil),
+        JNull => Cons(JInt(0), Nil),
         _ => panic("cannot get length of non-array/object/string"),
       }
     },
