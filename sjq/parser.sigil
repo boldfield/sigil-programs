@@ -1,0 +1,62 @@
+import ast
+use ast.{Token, Filter, Dot, Identifier, Identity, Field, Pipe};
+
+fn parse_filter(tokens: List[Token]) -> Filter ![String] {
+  if tokens.is_empty() {
+    perform raise("parse error: empty token list");
+  }
+
+  match tokens.get(0)? {
+    Dot => {
+      // After dot, check if there's an identifier
+      if tokens.len() == 1 {
+        // Just "." — identity
+        Identity
+      } else {
+        match tokens.get(1)? {
+          Identifier(name) => {
+            // Start with the first field
+            let first_field = Field(name);
+            // Check if there are more fields
+            parse_field_chain(tokens, 2, first_field)?
+          }
+          _ => {
+            perform raise("parse error: expected identifier after dot");
+          }
+        }
+      }
+    }
+    _ => {
+      perform raise("parse error: expected dot at start of filter");
+    }
+  }
+}
+
+fn parse_field_chain(tokens: List[Token], pos: Int, acc: Filter) -> Filter ![String] {
+  if pos >= tokens.len() {
+    // No more tokens, return accumulated result
+    acc
+  } else {
+    match tokens.get(pos)? {
+      Dot => {
+        // Expect an identifier next
+        if pos + 1 >= tokens.len() {
+          perform raise("parse error: expected identifier after dot");
+        }
+        match tokens.get(pos + 1)? {
+          Identifier(name) => {
+            let next_field = Field(name);
+            let piped = Pipe(acc, next_field);
+            parse_field_chain(tokens, pos + 2, piped)?
+          }
+          _ => {
+            perform raise("parse error: expected identifier after dot");
+          }
+        }
+      }
+      _ => {
+        perform raise("parse error: unexpected token in field chain");
+      }
+    }
+  }
+}

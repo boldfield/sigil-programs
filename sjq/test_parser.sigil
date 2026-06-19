@@ -1,0 +1,50 @@
+import ast
+import parser
+import std.io
+use std.io.{IO};
+use ast.{Token, Filter, Dot, Identifier, Identity, Field, Pipe};
+use parser.{parse_filter};
+
+fn main() -> Int ![IO] {
+  // Test 1: parse identity "."
+  let tokens1: List[Token] = [Dot];
+  let result1 = parse_filter(tokens1)?;
+  match result1 {
+    Identity => {
+      perform IO.println("test 1 PASS: identity");
+    }
+    _ => {
+      perform IO.println("test 1 FAIL: expected Identity");
+      return 1;
+    }
+  }
+
+  // Test 2: parse single field ".foo"
+  let tokens2: List[Token] = [Dot, Identifier("foo")];
+  let result2 = parse_filter(tokens2)?;
+  match result2 {
+    Field("foo") => {
+      perform IO.println("test 2 PASS: single field");
+    }
+    _ => {
+      perform IO.println("test 2 FAIL: expected Field(\"foo\")");
+      return 1;
+    }
+  }
+
+  // Test 3: parse chained fields ".foo.bar"
+  let tokens3: List[Token] = [Dot, Identifier("foo"), Dot, Identifier("bar")];
+  let result3 = parse_filter(tokens3)?;
+  match result3 {
+    Pipe(Field("foo"), Field("bar")) => {
+      perform IO.println("test 3 PASS: chained fields");
+    }
+    _ => {
+      perform IO.println("test 3 FAIL: expected Pipe(Field(\"foo\"), Field(\"bar\"))");
+      return 1;
+    }
+  }
+
+  perform IO.println("parser: all tests passed");
+  0
+}
