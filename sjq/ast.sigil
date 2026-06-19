@@ -1,5 +1,3 @@
-import std.json
-
 // Token type covering all tokens in the sjq grammar
 type Token =
   | Dot
@@ -9,7 +7,7 @@ type Token =
   | LParen
   | RParen
   | Integer(Int)
-  | Pipe
+  | PipeTok
 
 // Filter AST type with all variants for the MVP
 type Filter =

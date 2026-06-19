@@ -7,7 +7,7 @@ fn main() -> Int ![IO] {
   let _tok1 = ast.Dot;
   let _tok2 = ast.Identifier("field");
   let _tok3 = ast.Integer(42);
-  let _tok4 = ast.Pipe;
+  let _tok4 = ast.PipeTok;
 
   // Construct sample filter AST nodes
   let _f1 = ast.Identity;
