@@ -39,5 +39,9 @@ fn main() -> Int ![IO] {
   perform IO.println("Lexing '.foo':");
   let _: Int = print_tokens(tokens2);
 
+  let tokens3: List[Token] = lex(".[0] | select");
+  perform IO.println("Lexing '.[0] | select':");
+  let _: Int = print_tokens(tokens3);
+
   0
 }
