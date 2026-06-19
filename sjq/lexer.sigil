@@ -2,38 +2,35 @@ import ast
 import std.string
 import std.list
 import std.char
-use ast.{Token, Dot, Identifier};
-use std.list.{append, Cons, Nil};
-use std.char.{is_ascii_alpha, is_ascii_digit};
+use ast.{Token, Dot, Identifier}
+use std.list.{append, Cons, Nil}
+use std.char.{is_ascii_alpha, is_ascii_digit}
+use std.string.{string_length, string_char_at, string_concat, string_sub}
 
-fn is_identifier_char(c: Char) -> Bool {
+fn is_identifier_char(c: Char) -> Bool =>
   is_ascii_alpha(c) || is_ascii_digit(c) || c == '_'
-}
 
-fn lex_identifier(s: String, pos: Int, acc: String) -> (String, Int) {
-  let len = string_length(s);
+fn find_identifier_end(s: String, pos: Int, len: Int) -> Int =>
   if pos >= len {
-    (acc, pos)
+    pos
   } else {
     match string_char_at(s, pos) {
-      None => (acc, pos)
+      None => pos
       Some(c) => {
         if is_identifier_char(c) {
-          let next_acc = string_concat(acc, c);
-          lex_identifier(s, pos + 1, next_acc)
+          find_identifier_end(s, pos + 1, len)
         } else {
-          (acc, pos)
+          pos
         }
       }
     }
   }
-}
 
 type LexResult =
   | Ok(List[Token])
   | Error(String)
 
-fn lex_loop(s: String, pos: Int, len: Int, tokens: List[Token]) -> LexResult {
+fn lex_loop(s: String, pos: Int, len: Int, tokens: List[Token]) -> LexResult =>
   if pos >= len {
     Ok(tokens)
   } else {
@@ -41,22 +38,20 @@ fn lex_loop(s: String, pos: Int, len: Int, tokens: List[Token]) -> LexResult {
       None => Ok(tokens)
       Some(c) => {
         if c == '.' {
-          let new_tokens = append(tokens, Cons(Dot, Nil));
+          let new_tokens = append(tokens, Cons(Dot, Nil))
           lex_loop(s, pos + 1, len, new_tokens)
         } else if is_identifier_char(c) {
-          let (ident, new_pos) = lex_identifier(s, pos, "");
-          let new_tokens = append(tokens, Cons(Identifier(ident), Nil));
-          lex_loop(s, new_pos, len, new_tokens)
+          let end_pos = find_identifier_end(s, pos, len)
+          let ident = string_sub(s, pos, end_pos)
+          let new_tokens = append(tokens, Cons(Identifier(ident), Nil))
+          lex_loop(s, end_pos, len, new_tokens)
         } else {
-          let msg = string_concat("Unexpected character: ", c);
-          Error(msg)
+          Error(string_concat("Unexpected character: ", ""))
         }
       }
     }
   }
-}
 
-fn lex(s: String) -> LexResult {
-  let len = string_length(s);
+fn lex(s: String) -> LexResult =>
+  let len = string_length(s)
   lex_loop(s, 0, len, Nil)
-}

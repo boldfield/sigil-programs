@@ -3,28 +3,27 @@ import ast
 import std.io
 import std.string
 import std.list
-use std.io.{IO};
-use std.list.{map, Cons, Nil};
-use lexer.{lex, LexResult};
-use ast.{Token, Dot, Identifier};
+use std.io.{IO}
+use std.list.{map, Cons, Nil}
+use std.string.{string_concat, string_join}
+use lexer.{lex, LexResult}
+use ast.{Token, Dot, Identifier}
 
-fn token_to_string(tok: Token) -> String {
+fn token_to_string(tok: Token) -> String =>
   match tok {
     Dot => "Dot"
     Identifier(s) => string_concat(string_concat("Identifier(", s), ")")
   }
-}
 
-fn tokens_to_string(tokens: List[Token]) -> String {
+fn tokens_to_string(tokens: List[Token]) -> String =>
   match tokens {
     Nil => "[]"
     _ => {
-      let strs = map(tokens, fn (t: Token) -> String => token_to_string(t));
-      let joined = string_join(", ", strs);
+      let strs = map(tokens, fn (t: Token) -> String => token_to_string(t))
+      let joined = string_join(", ", strs)
       string_concat(string_concat("[", joined), "]")
     }
   }
-}
 
 fn main() -> Int ![IO] {
   // Test 1: lex "."
