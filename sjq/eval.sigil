@@ -1,0 +1,61 @@
+import ast
+import std.json
+import std.list
+use ast.{Filter, Identity, Field, Index, Iterate, Pipe, Length, Keys, Select}
+use std.json.{JValue}
+
+fn find_field(obj: List[(String, JValue)], key: String) -> Option[JValue] {
+  match obj {
+    [] -> None
+    [(k, v), ...rest] -> {
+      if k == key {
+        Some(v)
+      } else {
+        find_field(rest, key)
+      }
+    }
+  }
+}
+
+fn eval(filter: Filter, input: JValue) -> List[JValue] {
+  match filter {
+    Identity -> {
+      [input]
+    }
+    Field(key) -> {
+      match input {
+        JObject(obj) -> {
+          match find_field(obj, key) {
+            Some(v) -> {
+              [v]
+            }
+            None -> {
+              [JNull]
+            }
+          }
+        }
+        _ -> {
+          [JNull]
+        }
+      }
+    }
+    Index(_) -> {
+      error("Index not yet supported")
+    }
+    Iterate -> {
+      error("Iterate not yet supported")
+    }
+    Pipe(_, _) -> {
+      error("Pipe not yet supported")
+    }
+    Length -> {
+      error("Length not yet supported")
+    }
+    Keys -> {
+      error("Keys not yet supported")
+    }
+    Select(_) -> {
+      error("Select not yet supported")
+    }
+  }
+}
