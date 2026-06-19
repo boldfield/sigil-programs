@@ -1,0 +1,37 @@
+import std.io
+import ast
+use std.io.{IO};
+use ast.{Token, Filter};
+
+fn parse_field_chain(tokens: List[Token]) -> Filter ![] {
+  match tokens {
+    Nil => Identity,
+    Cons(first, rest) => match first {
+      Identifier(name) => match rest {
+        Nil => Field(name),
+        Cons(Dot, next_rest) => Pipe(Field(name), parse_field_chain(next_rest)),
+        _ => Field(name),
+      },
+      Dot => parse_field_chain(rest),
+      _ => Identity,
+    },
+  }
+}
+
+fn parse(tokens: List[Token]) -> Filter ![] {
+  match tokens {
+    Nil => Identity,
+    Cons(first, rest) => match first {
+      Dot => match rest {
+        Nil => Identity,
+        Cons(Identifier(name), next_rest) => match next_rest {
+          Nil => Field(name),
+          Cons(Dot, field_rest) => Pipe(Field(name), parse_field_chain(field_rest)),
+          _ => Field(name),
+        },
+        _ => Identity,
+      },
+      _ => Identity,
+    },
+  }
+}
