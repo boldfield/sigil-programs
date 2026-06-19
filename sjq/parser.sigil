@@ -18,6 +18,20 @@ fn parse_field_chain(tokens: List[Token]) -> Filter ![] {
   }
 }
 
+fn parse_index_or_iterate(tokens: List[Token]) -> (Filter, List[Token]) ![] {
+  match tokens {
+    Nil => (Iterate, Nil),
+    Cons(first, rest) => match first {
+      Integer(n) => match rest {
+        Cons(RBracket, next_rest) => (Index(n), next_rest),
+        _ => (Index(n), rest),
+      },
+      RBracket => (Iterate, rest),
+      _ => (Iterate, tokens),
+    },
+  }
+}
+
 fn parse(tokens: List[Token]) -> Filter ![] {
   match tokens {
     Nil => Identity,
@@ -28,6 +42,14 @@ fn parse(tokens: List[Token]) -> Filter ![] {
           Nil => Field(name),
           Cons(Dot, field_rest) => Pipe(Field(name), parse_field_chain(field_rest)),
           _ => Field(name),
+        },
+        Cons(LBracket, bracket_rest) => {
+          let (bracket_filter, remaining): (Filter, List[Token]) = parse_index_or_iterate(bracket_rest);
+          match remaining {
+            Nil => bracket_filter,
+            Cons(Dot, field_rest) => Pipe(bracket_filter, parse_field_chain(field_rest)),
+            _ => bracket_filter,
+          }
         },
         _ => Identity,
       },
