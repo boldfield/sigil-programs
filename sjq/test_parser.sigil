@@ -1,8 +1,10 @@
+import std.int
 import std.io
 import std.list
 import std.string
 import ast
 import parser
+use std.int.{int_to_string};
 use std.io.{IO};
 use std.list.{Cons, List, Nil};
 use std.string.{string_concat};

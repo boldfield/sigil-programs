@@ -9,7 +9,7 @@ type Token =
   | LParen
   | RParen
   | Integer(Int)
-  | Pipe
+  | PipeTok
 
 type Filter =
   | Identity
