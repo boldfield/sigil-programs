@@ -5,7 +5,7 @@ import std.option
 import std.ordering
 import std.string
 use ast.{Filter};
-use std.json.{JValue, JNull, JArray, JList, JLNil, JLCons, JObject, JONil, JOCons, JInt, JString};
+use std.json.{JValue, JNull, JArray, JList, JLNil, JLCons, JObject, JONil, JOCons, JInt, JString, JBool};
 use std.list.{List, Nil, Cons, append, length as list_length, range, list_sort_string};
 use std.option.{Option, None, Some};
 use std.ordering.{Ordering, Equal, string_compare};
@@ -105,6 +105,26 @@ fn eval_pipe_helper(filter_b: Filter, values: List[JValue]) -> List[JValue] ![] 
   }
 }
 
+fn is_truthy(value: JValue) -> Bool ![] {
+  match value {
+    JBool(b) => b,
+    JNull => false,
+    _ => true,
+  }
+}
+
+fn any_truthy(values: List[JValue]) -> Bool ![] {
+  match values {
+    Nil => false,
+    Cons(v, rest) => {
+      match is_truthy(v) {
+        true => true,
+        false => any_truthy(rest),
+      }
+    },
+  }
+}
+
 fn eval(filter: Filter, input: JValue) -> List[JValue] ![] {
   match filter {
     Identity => Cons(input, Nil),
@@ -169,6 +189,12 @@ fn eval(filter: Filter, input: JValue) -> List[JValue] ![] {
         _ => panic("cannot get keys of non-object/array"),
       }
     },
-    Select(_) => panic("not yet supported: Select"),
+    Select(inner) => {
+      let results: List[JValue] = eval(inner, input);
+      match any_truthy(results) {
+        true => Cons(input, Nil),
+        false => Nil,
+      }
+    },
   }
 }
