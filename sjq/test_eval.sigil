@@ -6,10 +6,10 @@ import std.list
 import std.mem
 import std.ordering
 import std.string
-use ast.{Filter, Identity, Field};
+use ast.{Filter, Identity, Field, Index, Iterate, Pipe};
 use eval.{eval};
 use std.io.{IO};
-use std.json.{JValue, JObject, JOCons, JONil, JInt, JString, JNull, json_render};
+use std.json.{JValue, JArray, JList, JLNil, JLCons, JObject, JOCons, JONil, JInt, JString, JNull, json_render};
 use std.list.{List, Nil, Cons};
 use std.mem.{Mem};
 use std.ordering.{Equal, string_compare};
@@ -126,13 +126,147 @@ fn test_field_missing() -> Int ![IO, Mem] {
   }
 }
 
+fn test_index() -> Int ![IO, Mem] {
+  let jlist: JList = JLCons(JInt(10), JLCons(JInt(20), JLCons(JInt(30), JLNil)));
+  let input: JValue = JArray(jlist);
+  let filter: Filter = Index(1);
+  let results: List[JValue] = eval(filter, input);
+  let expected: List[JValue] = Cons(JInt(20), Nil);
+  match list_equals(results, expected) {
+    true => {
+      perform IO.println("test_index: PASS");
+      0
+    },
+    false => {
+      perform IO.println("test_index: FAIL");
+      1
+    },
+  }
+}
+
+fn test_index_out_of_range() -> Int ![IO, Mem] {
+  let jlist: JList = JLCons(JInt(10), JLCons(JInt(20), JLNil));
+  let input: JValue = JArray(jlist);
+  let filter: Filter = Index(5);
+  let results: List[JValue] = eval(filter, input);
+  let expected: List[JValue] = Cons(JNull, Nil);
+  match list_equals(results, expected) {
+    true => {
+      perform IO.println("test_index_out_of_range: PASS");
+      0
+    },
+    false => {
+      perform IO.println("test_index_out_of_range: FAIL");
+      1
+    },
+  }
+}
+
+fn test_iterate_array() -> Int ![IO, Mem] {
+  let jlist: JList = JLCons(JInt(1), JLCons(JInt(2), JLCons(JInt(3), JLNil)));
+  let input: JValue = JArray(jlist);
+  let filter: Filter = Iterate;
+  let results: List[JValue] = eval(filter, input);
+  let expected: List[JValue] = Cons(JInt(1), Cons(JInt(2), Cons(JInt(3), Nil)));
+  match list_equals(results, expected) {
+    true => {
+      perform IO.println("test_iterate_array: PASS");
+      0
+    },
+    false => {
+      perform IO.println("test_iterate_array: FAIL");
+      1
+    },
+  }
+}
+
+fn test_iterate_object() -> Int ![IO, Mem] {
+  let obj: JObject = JOCons("a", JInt(1), JOCons("b", JInt(2), JONil));
+  let input: JValue = JObject(obj);
+  let filter: Filter = Iterate;
+  let results: List[JValue] = eval(filter, input);
+  let expected: List[JValue] = Cons(JInt(1), Cons(JInt(2), Nil));
+  match list_equals(results, expected) {
+    true => {
+      perform IO.println("test_iterate_object: PASS");
+      0
+    },
+    false => {
+      perform IO.println("test_iterate_object: FAIL");
+      1
+    },
+  }
+}
+
+fn test_pipe_iterate_field() -> Int ![IO, Mem] {
+  let obj1: JObject = JOCons("foo", JString("alice"), JONil);
+  let obj2: JObject = JOCons("foo", JString("bob"), JONil);
+  let jlist: JList = JLCons(JObject(obj1), JLCons(JObject(obj2), JLNil));
+  let input: JValue = JArray(jlist);
+  let filter: Filter = Pipe(Iterate, Field("foo"));
+  let results: List[JValue] = eval(filter, input);
+  let expected: List[JValue] = Cons(JString("alice"), Cons(JString("bob"), Nil));
+  match list_equals(results, expected) {
+    true => {
+      perform IO.println("test_pipe_iterate_field: PASS");
+      0
+    },
+    false => {
+      perform IO.println("test_pipe_iterate_field: FAIL");
+      1
+    },
+  }
+}
+
+fn test_pipe_identity_field() -> Int ![IO, Mem] {
+  let obj: JObject = JOCons("x", JInt(42), JONil);
+  let input: JValue = JObject(obj);
+  let filter: Filter = Pipe(Identity, Field("x"));
+  let results: List[JValue] = eval(filter, input);
+  let expected: List[JValue] = Cons(JInt(42), Nil);
+  match list_equals(results, expected) {
+    true => {
+      perform IO.println("test_pipe_identity_field: PASS");
+      0
+    },
+    false => {
+      perform IO.println("test_pipe_identity_field: FAIL");
+      1
+    },
+  }
+}
+
 fn main() -> Int ![IO, Mem] {
   let t1: Int = test_identity();
   let t2: Int = test_field();
   let t3: Int = test_field_missing();
+  let t4: Int = test_index();
+  let t5: Int = test_index_out_of_range();
+  let t6: Int = test_iterate_array();
+  let t7: Int = test_iterate_object();
+  let t8: Int = test_pipe_iterate_field();
+  let t9: Int = test_pipe_identity_field();
   match t1 {
     0 => match t2 {
-      0 => t3,
+      0 => match t3 {
+        0 => match t4 {
+          0 => match t5 {
+            0 => match t6 {
+              0 => match t7 {
+                0 => match t8 {
+                  0 => t9,
+                  _ => t8,
+                },
+                _ => t7,
+              },
+              _ => t6,
+            },
+            _ => t5,
+          },
+          _ => t4,
+        },
+        _ => t3,
+      },
       _ => t2,
     },
     _ => t1,
