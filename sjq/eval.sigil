@@ -3,11 +3,13 @@ import std.json
 import std.list
 import std.option
 import std.ordering
+import std.string
 use ast.{Filter};
-use std.json.{JValue, JNull, JArray, JList, JLNil, JLCons, JObject, JONil, JOCons};
-use std.list.{List, Nil, Cons, append};
+use std.json.{JValue, JNull, JArray, JList, JLNil, JLCons, JObject, JONil, JOCons, JInt, JString};
+use std.list.{List, Nil, Cons, append, length as list_length, range, list_sort_string};
 use std.option.{Option, None, Some};
 use std.ordering.{Ordering, Equal, string_compare};
+use std.string.{string_length};
 
 fn lookup_field(key: String, obj: JObject) -> Option[JValue] ![] {
   match obj {
@@ -54,6 +56,41 @@ fn jobject_values(obj: JObject) -> List[JValue] ![] {
   match obj {
     JONil => Nil,
     JOCons(_, v, rest) => Cons(v, jobject_values(rest)),
+  }
+}
+
+fn jlist_length(jlist: JList) -> Int ![] {
+  match jlist {
+    JLNil => 0,
+    JLCons(_, rest) => 1 + jlist_length(rest),
+  }
+}
+
+fn jobject_length(obj: JObject) -> Int ![] {
+  match obj {
+    JONil => 0,
+    JOCons(_, _, rest) => 1 + jobject_length(rest),
+  }
+}
+
+fn jobject_keys(obj: JObject) -> List[String] ![] {
+  match obj {
+    JONil => Nil,
+    JOCons(k, _, rest) => Cons(k, jobject_keys(rest)),
+  }
+}
+
+fn string_list_to_jlist(strs: List[String]) -> JList ![] {
+  match strs {
+    Nil => JLNil,
+    Cons(s, rest) => JLCons(JString(s), string_list_to_jlist(rest)),
+  }
+}
+
+fn int_list_to_jlist(ints: List[Int]) -> JList ![] {
+  match ints {
+    Nil => JLNil,
+    Cons(n, rest) => JLCons(JInt(n), int_list_to_jlist(rest)),
   }
 }
 
@@ -106,8 +143,32 @@ fn eval(filter: Filter, input: JValue) -> List[JValue] ![] {
       let first_results: List[JValue] = eval(a, input);
       eval_pipe_helper(b, first_results)
     },
-    Length => panic("not yet supported: Length"),
-    Keys => panic("not yet supported: Keys"),
+    Length => {
+      match input {
+        JArray(jlist) => Cons(JInt(jlist_length(jlist)), Nil),
+        JObject(obj) => Cons(JInt(jobject_length(obj)), Nil),
+        JString(s) => Cons(JInt(string_length(s)), Nil),
+        JNull => Cons(JInt(0), Nil),
+        _ => panic("cannot get length of non-array/object/string"),
+      }
+    },
+    Keys => {
+      match input {
+        JObject(obj) => {
+          let keys: List[String] = jobject_keys(obj);
+          let sorted_keys: List[String] = list_sort_string(keys);
+          let jlist: JList = string_list_to_jlist(sorted_keys);
+          Cons(JArray(jlist), Nil)
+        },
+        JArray(jlist) => {
+          let len: Int = jlist_length(jlist);
+          let indices: List[Int] = range(0, len);
+          let jlist_indices: JList = int_list_to_jlist(indices);
+          Cons(JArray(jlist_indices), Nil)
+        },
+        _ => panic("cannot get keys of non-object/array"),
+      }
+    },
     Select(_) => panic("not yet supported: Select"),
   }
 }
