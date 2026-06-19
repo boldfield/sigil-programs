@@ -6,20 +6,20 @@ SJQ="./bin/main"
 # Test 1: JSON identity filter (round-trip)
 echo "  test: identity filter with simple JSON"
 result=$(echo '{"key":"value"}' | "$SJQ" '.')
-if [ "$result" = '{"key":"value"}' ]; then
+if [ "$result" = '{"key": "value"}' ]; then
   echo "    PASS"
 else
-  echo "    FAIL: expected {'key':'value'}, got '$result'"
+  echo "    FAIL: expected {'key': 'value'}, got '$result'"
   exit 1
 fi
 
 # Test 2: Array JSON identity filter
 echo "  test: identity filter with array"
 result=$(echo '[1,2,3]' | "$SJQ" '.')
-if [ "$result" = '[1,2,3]' ]; then
+if [ "$result" = '[1, 2, 3]' ]; then
   echo "    PASS"
 else
-  echo "    FAIL: expected [1,2,3], got '$result'"
+  echo "    FAIL: expected [1, 2, 3], got '$result'"
   exit 1
 fi
 
