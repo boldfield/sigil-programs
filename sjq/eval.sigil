@@ -3,10 +3,10 @@ import std.json
 use ast.{Filter, Identity, Field, Index, Iterate, Pipe, Length, Keys, Select}
 use std.json.{JValue, JObject, JNull, JONil, JOCons}
 
-fn find_field(obj: JObject, key: String) -> Option[JValue] {
+fn find_field(obj: JObject, key: String) -> Option[JValue] ![] {
   match obj {
-    JONil -> None
-    JOCons(k, v, rest) -> {
+    JONil => None,
+    JOCons(k, v, rest) => {
       if k == key {
         Some(v)
       } else {
@@ -16,45 +16,25 @@ fn find_field(obj: JObject, key: String) -> Option[JValue] {
   }
 }
 
-fn eval(filter: Filter, input: JValue) -> List[JValue] {
+fn eval(filter: Filter, input: JValue) -> List[JValue] ![] {
   match filter {
-    Identity -> {
-      [input]
-    }
-    Field(key) -> {
+    Identity => [input],
+    Field(key) => {
       match input {
-        JObject(obj) -> {
+        JObject(obj) => {
           match find_field(obj, key) {
-            Some(v) -> {
-              [v]
-            }
-            None -> {
-              [JNull]
-            }
+            Some(v) => [v],
+            None => [JNull]
           }
-        }
-        _ -> {
-          [JNull]
-        }
+        },
+        _ => [JNull]
       }
-    }
-    Index(_) -> {
-      error("Index not yet supported")
-    }
-    Iterate -> {
-      error("Iterate not yet supported")
-    }
-    Pipe(_, _) -> {
-      error("Pipe not yet supported")
-    }
-    Length -> {
-      error("Length not yet supported")
-    }
-    Keys -> {
-      error("Keys not yet supported")
-    }
-    Select(_) -> {
-      error("Select not yet supported")
-    }
+    },
+    Index(_) => error("Index not yet supported"),
+    Iterate => error("Iterate not yet supported"),
+    Pipe(_, _) => error("Pipe not yet supported"),
+    Length => error("Length not yet supported"),
+    Keys => error("Keys not yet supported"),
+    Select(_) => error("Select not yet supported")
   }
 }

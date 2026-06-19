@@ -14,35 +14,27 @@ fn main() -> Int ![IO] {
   let filter1: Filter = Identity;
   let result1: List[JValue] = eval(filter1, input1);
   perform IO.println("Identity test:");
-  perform std.list.for_each(result1, fn (v) {
-    perform IO.println(json_render(v))
-  });
+  perform std.list.for_each(result1, fn (v) -> Unit ![IO] => perform IO.println(json_render(v)));
 
   // Test Field access
   let input2: JValue = JObject(JOCons("foo", JString("bar"), JOCons("baz", JInt(42), JONil)));
   let filter2: Filter = Field("foo");
   let result2: List[JValue] = eval(filter2, input2);
   perform IO.println("Field access test (foo):");
-  perform std.list.for_each(result2, fn (v) {
-    perform IO.println(json_render(v))
-  });
+  perform std.list.for_each(result2, fn (v) -> Unit ![IO] => perform IO.println(json_render(v)));
 
   // Test Field access on missing key
   let filter3: Filter = Field("missing");
   let result3: List[JValue] = eval(filter3, input2);
   perform IO.println("Field access test (missing):");
-  perform std.list.for_each(result3, fn (v) {
-    perform IO.println(json_render(v))
-  });
+  perform std.list.for_each(result3, fn (v) -> Unit ![IO] => perform IO.println(json_render(v)));
 
   // Test Field access on non-object
   let input4: JValue = JString("test");
   let filter4: Filter = Field("key");
   let result4: List[JValue] = eval(filter4, input4);
   perform IO.println("Field access test (non-object):");
-  perform std.list.for_each(result4, fn (v) {
-    perform IO.println(json_render(v))
-  });
+  perform std.list.for_each(result4, fn (v) -> Unit ![IO] => perform IO.println(json_render(v)));
 
   perform IO.println("eval: all tests completed successfully");
   0
