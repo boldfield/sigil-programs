@@ -8,16 +8,24 @@ import std.mem
 import std.ordering
 import std.result
 import std.string
+import ast
+import eval
+import lexer
+import parser
 use std.byte_array.{string_to_bytes};
 use std.env.{env_args};
 use std.fs.{read_file};
 use std.io.{IO};
-use std.json.{json_parse, json_render};
+use std.json.{json_parse, json_render, JValue};
 use std.list.{Cons, List, Nil};
 use std.mem.{Mem};
 use std.ordering.{Equal, Ordering, string_compare};
 use std.result.{Err, Ok};
 use std.string.{string_concat};
+use eval.{eval};
+use lexer.{lex};
+use parser.{parse};
+use ast.{Token, Filter};
 
 fn read_stdin_lines() -> String ![IO] {
   let line: String = perform IO.read_line();
@@ -27,12 +35,24 @@ fn read_stdin_lines() -> String ![IO] {
   }
 }
 
-fn process_identity_filter(input: String) -> Int ![IO, Mem] {
+fn render_outputs(values: List[JValue]) -> Int ![IO, Mem] {
+  match values {
+    Nil => 0,
+    Cons(v, rest) => {
+      perform IO.println(json_render(v));
+      render_outputs(rest)
+    },
+  }
+}
+
+fn process_filter(filter: String, input: String) -> Int ![IO, Mem] {
   let json_bytes: ByteArray = string_to_bytes(input);
   match json_parse(json_bytes) {
     Ok(value) => {
-      perform IO.println(json_render(value));
-      0
+      let tokens: List[Token] = lex(filter);
+      let parsed_filter: Filter = parse(tokens);
+      let results: List[JValue] = eval(parsed_filter, value);
+      render_outputs(results)
     },
     Err(e) => {
       perform IO.println(string_concat("error: ", e));
@@ -49,19 +69,11 @@ fn read_input_from_file(filename: String) -> String ![IO, Fs] {
 }
 
 fn handle_input(filter: String, file_args: List[String]) -> Int ![IO, Mem, Fs] {
-  match string_compare(filter, ".") {
-    Equal => {
-      let input: String = match file_args {
-        Nil => read_stdin_lines(),
-        Cons(filename, _) => read_input_from_file(filename),
-      };
-      process_identity_filter(input)
-    },
-    _ => {
-      perform IO.println("error: unsupported filter");
-      1
-    },
-  }
+  let input: String = match file_args {
+    Nil => read_stdin_lines(),
+    Cons(filename, _) => read_input_from_file(filename),
+  };
+  process_filter(filter, input)
 }
 
 fn main() -> Int ![IO, Env, Fs, Mem] {

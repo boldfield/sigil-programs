@@ -1,47 +1,138 @@
 import std.byte_array
 import std.io
 import std.json
+import std.list
 import std.mem
 import std.result
+import std.string
+import ast
+import eval
+import lexer
+import parser
 use std.byte_array.{string_to_bytes};
 use std.io.{IO};
-use std.json.{json_parse, json_render};
+use std.json.{json_parse, json_render, JValue};
+use std.list.{List, Cons, Nil};
 use std.mem.{Mem};
 use std.result.{Err, Ok};
+use std.string.{string_concat};
+use eval.{eval};
+use lexer.{lex};
+use parser.{parse};
+use ast.{Token, Filter};
 
-fn test_identity_passthrough() -> Int ![IO, Mem] {
+fn render_test_outputs(values: List[JValue]) -> Int ![IO, Mem] {
+  match values {
+    Nil => 0,
+    Cons(v, rest) => {
+      perform IO.println(json_render(v));
+      render_test_outputs(rest)
+    },
+  }
+}
+
+fn test_identity_filter() -> Int ![IO, Mem] {
   let json_str: String = "{\"name\": \"test\", \"value\": 42}";
   let json_bytes: ByteArray = string_to_bytes(json_str);
   match json_parse(json_bytes) {
     Ok(value) => {
-      let rendered: String = json_render(value);
-      perform IO.println(rendered);
-      0
+      let tokens: List[Token] = lex(".");
+      let filter: Filter = parse(tokens);
+      let results: List[JValue] = eval(filter, value);
+      render_test_outputs(results)
     },
     Err(e) => {
-      perform IO.println(e);
+      perform IO.println(string_concat("error: ", e));
       1
     },
   }
 }
 
-fn test_invalid_json() -> Int ![IO] {
-  let invalid_json: String = "{invalid json}";
-  let json_bytes: ByteArray = string_to_bytes(invalid_json);
+fn test_field_access() -> Int ![IO, Mem] {
+  let json_str: String = "{\"name\": \"Alice\", \"age\": 30}";
+  let json_bytes: ByteArray = string_to_bytes(json_str);
   match json_parse(json_bytes) {
-    Ok(_) => {
-      perform IO.println("error: should have failed to parse");
+    Ok(value) => {
+      let tokens: List[Token] = lex(".name");
+      let filter: Filter = parse(tokens);
+      let results: List[JValue] = eval(filter, value);
+      render_test_outputs(results)
+    },
+    Err(e) => {
+      perform IO.println(string_concat("error: ", e));
       1
     },
-    Err(_) => 0,
+  }
+}
+
+fn test_array_iteration() -> Int ![IO, Mem] {
+  let json_str: String = "[1, 2, 3]";
+  let json_bytes: ByteArray = string_to_bytes(json_str);
+  match json_parse(json_bytes) {
+    Ok(value) => {
+      let tokens: List[Token] = lex(".[]");
+      let filter: Filter = parse(tokens);
+      let results: List[JValue] = eval(filter, value);
+      render_test_outputs(results)
+    },
+    Err(e) => {
+      perform IO.println(string_concat("error: ", e));
+      1
+    },
+  }
+}
+
+fn test_length_filter() -> Int ![IO, Mem] {
+  let json_str: String = "[1, 2, 3]";
+  let json_bytes: ByteArray = string_to_bytes(json_str);
+  match json_parse(json_bytes) {
+    Ok(value) => {
+      let tokens: List[Token] = lex("length");
+      let filter: Filter = parse(tokens);
+      let results: List[JValue] = eval(filter, value);
+      render_test_outputs(results)
+    },
+    Err(e) => {
+      perform IO.println(string_concat("error: ", e));
+      1
+    },
+  }
+}
+
+fn test_keys_filter() -> Int ![IO, Mem] {
+  let json_str: String = "{\"b\": 2, \"a\": 1}";
+  let json_bytes: ByteArray = string_to_bytes(json_str);
+  match json_parse(json_bytes) {
+    Ok(value) => {
+      let tokens: List[Token] = lex("keys");
+      let filter: Filter = parse(tokens);
+      let results: List[JValue] = eval(filter, value);
+      render_test_outputs(results)
+    },
+    Err(e) => {
+      perform IO.println(string_concat("error: ", e));
+      1
+    },
   }
 }
 
 fn main() -> Int ![IO, Mem] {
-  let test1: Int = test_identity_passthrough();
-  let test2: Int = test_invalid_json();
+  let test1: Int = test_identity_filter();
+  let test2: Int = test_field_access();
+  let test3: Int = test_array_iteration();
+  let test4: Int = test_length_filter();
+  let test5: Int = test_keys_filter();
   match test1 {
-    0 => test2,
+    0 => match test2 {
+      0 => match test3 {
+        0 => match test4 {
+          0 => test5,
+          _ => test4,
+        },
+        _ => test3,
+      },
+      _ => test2,
+    },
     _ => test1,
   }
 }
