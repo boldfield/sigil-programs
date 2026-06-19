@@ -1,0 +1,39 @@
+import std.io
+import std.list
+import std.string
+import ast
+import parser
+use std.io.{IO};
+use std.list.{Cons, List, Nil};
+use std.string.{string_concat};
+use ast.{Token, Filter};
+use parser.{parse};
+
+fn render_filter(f: Filter) -> String ![] {
+  match f {
+    Identity => "Identity",
+    Field(s) => s,
+    Index(n) => int_to_string(n),
+    Iterate => "Iterate",
+    Pipe(left, right) => string_concat("Pipe(", string_concat(render_filter(left), string_concat(", ", string_concat(render_filter(right), ")")))),
+    Length => "Length",
+    Keys => "Keys",
+    Select(_) => "Select",
+  }
+}
+
+fn main() -> Int ![IO] {
+  let dot: List[Token] = Cons(Dot, Nil);
+  let result_dot: Filter = parse(dot);
+  perform IO.println(string_concat("parse([Dot]) = ", render_filter(result_dot)));
+
+  let dot_foo: List[Token] = Cons(Dot, Cons(Identifier("foo"), Nil));
+  let result_dot_foo: Filter = parse(dot_foo);
+  perform IO.println(string_concat("parse([Dot, Identifier(\"foo\")]) = ", render_filter(result_dot_foo)));
+
+  let dot_foo_dot_bar: List[Token] = Cons(Dot, Cons(Identifier("foo"), Cons(Dot, Cons(Identifier("bar"), Nil))));
+  let result_dot_foo_dot_bar: Filter = parse(dot_foo_dot_bar);
+  perform IO.println(string_concat("parse([Dot, Identifier(\"foo\"), Dot, Identifier(\"bar\")]) = ", render_filter(result_dot_foo_dot_bar)));
+
+  0
+}
