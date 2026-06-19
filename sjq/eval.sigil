@@ -1,12 +1,12 @@
 import ast
 import std.json
 use ast.{Filter, Identity, Field, Index, Iterate, Pipe, Length, Keys, Select}
-use std.json.{JValue}
+use std.json.{JValue, JObject, JNull, JONil, JOCons}
 
-fn find_field(obj: List[(String, JValue)], key: String) -> Option[JValue] {
+fn find_field(obj: JObject, key: String) -> Option[JValue] {
   match obj {
-    [] -> None
-    [(k, v), ...rest] -> {
+    JONil -> None
+    JOCons(k, v, rest) -> {
       if k == key {
         Some(v)
       } else {

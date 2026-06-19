@@ -6,11 +6,11 @@ import std.list
 use std.io.{IO}
 use ast.{Filter, Identity, Field}
 use eval.{eval}
-use std.json.{JValue, JNull, JString, JInteger, JObject, json_render}
+use std.json.{JValue, JNull, JString, JInt, JObject, JONil, JOCons, json_render}
 
 fn main() -> Int ![IO] {
   // Test Identity
-  let input1: JValue = JObject([("foo", JString("bar"))]);
+  let input1: JValue = JObject(JOCons("foo", JString("bar"), JONil));
   let filter1: Filter = Identity;
   let result1: List[JValue] = eval(filter1, input1);
   perform IO.println("Identity test:");
@@ -19,7 +19,7 @@ fn main() -> Int ![IO] {
   });
 
   // Test Field access
-  let input2: JValue = JObject([("foo", JString("bar")), ("baz", JInteger(42))]);
+  let input2: JValue = JObject(JOCons("foo", JString("bar"), JOCons("baz", JInt(42), JONil)));
   let filter2: Filter = Field("foo");
   let result2: List[JValue] = eval(filter2, input2);
   perform IO.println("Field access test (foo):");
