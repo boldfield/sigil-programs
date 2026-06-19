@@ -2,7 +2,7 @@ import std.char
 import std.list
 import std.string
 import ast
-use std.char.{is_ascii_alpha, is_ascii_alphanumeric, char_to_string, char_eq};
+use std.char.{is_ascii_alpha, is_ascii_alphanumeric, char_to_string, char_eq, is_ascii_digit, char_to_int};
 use std.list.{Cons, List, Nil};
 use std.string.{string_chars, string_concat};
 use ast.{Token};
@@ -21,6 +21,21 @@ fn is_id_continue(c: Char) -> Bool ![] {
   }
 }
 
+fn __read_integer(chars: List[Char], acc: Int) -> (Int, List[Char]) ![] {
+  match chars {
+    Nil => (acc, Nil),
+    Cons(c, rest) => {
+      match is_ascii_digit(c) {
+        true => {
+          let digit_value: Int = char_to_int(c) - char_to_int('0');
+          __read_integer(rest, acc * 10 + digit_value)
+        },
+        false => (acc, chars),
+      }
+    },
+  }
+}
+
 fn lex(input: String) -> List[Token] ![] {
   let chars: List[Char] = string_chars(input);
   let tokens: List[Token] = __lex_chars(chars, Nil);
@@ -33,15 +48,31 @@ fn __lex_chars(chars: List[Char], acc: List[Token]) -> List[Token] ![] {
     Cons(c, rest) => {
       match c {
         '.' => __lex_chars(rest, Cons(Dot, acc)),
+        '[' => __lex_chars(rest, Cons(LBracket, acc)),
+        ']' => __lex_chars(rest, Cons(RBracket, acc)),
+        '(' => __lex_chars(rest, Cons(LParen, acc)),
+        ')' => __lex_chars(rest, Cons(RParen, acc)),
+        '|' => __lex_chars(rest, Cons(PipeTok, acc)),
         _ => {
-          match is_id_start(c) {
+          match is_ascii_digit(c) {
             true => {
-              let id_result: (String, List[Char]) = __read_identifier(rest, char_to_string(c));
-              match id_result {
-                (id, remaining) => __lex_chars(remaining, Cons(Identifier(id), acc)),
+              let digit_value: Int = char_to_int(c) - char_to_int('0');
+              let int_result: (Int, List[Char]) = __read_integer(rest, digit_value);
+              match int_result {
+                (num, remaining) => __lex_chars(remaining, Cons(Integer(num), acc)),
               }
             },
-            false => __lex_chars(rest, acc),
+            false => {
+              match is_id_start(c) {
+                true => {
+                  let id_result: (String, List[Char]) = __read_identifier(rest, char_to_string(c));
+                  match id_result {
+                    (id, remaining) => __lex_chars(remaining, Cons(Identifier(id), acc)),
+                  }
+                },
+                false => __lex_chars(rest, acc),
+              }
+            },
           }
         },
       }
