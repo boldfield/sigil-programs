@@ -1,0 +1,76 @@
+import ast
+import eval
+import std.io
+import std.json
+import std.list
+import std.mem
+use ast.{Filter, Identity, Field};
+use eval.{eval};
+use std.io.{IO};
+use std.json.{JValue, JObject, JOCons, JONil, JInt, JString, json_render};
+use std.list.{List, Nil, Cons};
+use std.mem.{Mem};
+
+fn print_list(results: List[JValue]) -> Int ![IO, Mem] {
+  match results {
+    Nil => {
+      perform IO.println("[]");
+      0
+    },
+    Cons(v, rest) => {
+      perform IO.println(json_render(v));
+      print_list(rest)
+    },
+  }
+}
+
+fn test_identity() -> Int ![IO, Mem] {
+  let input: JValue = JInt(42);
+  let filter: Filter = Identity;
+  let results: List[JValue] = eval(filter, input);
+  perform IO.println("test_identity:");
+  print_list(results)
+}
+
+fn test_field() -> Int ![IO, Mem] {
+  let obj: JObject = JOCons("name", JString("alice"), JOCons("age", JInt(30), JONil));
+  let input: JValue = JObject(obj);
+  let filter: Filter = Field("name");
+  let results: List[JValue] = eval(filter, input);
+  perform IO.println("test_field:");
+  print_list(results)
+}
+
+fn test_field_missing() -> Int ![IO, Mem] {
+  let obj: JObject = JOCons("name", JString("alice"), JONil);
+  let input: JValue = JObject(obj);
+  let filter: Filter = Field("missing");
+  let results: List[JValue] = eval(filter, input);
+  perform IO.println("test_field_missing:");
+  print_list(results)
+}
+
+fn test_field_on_non_object() -> Int ![IO, Mem] {
+  let input: JValue = JInt(42);
+  let filter: Filter = Field("name");
+  let results: List[JValue] = eval(filter, input);
+  perform IO.println("test_field_on_non_object:");
+  print_list(results)
+}
+
+fn main() -> Int ![IO, Mem] {
+  let t1: Int = test_identity();
+  let t2: Int = test_field();
+  let t3: Int = test_field_missing();
+  let t4: Int = test_field_on_non_object();
+  match t1 {
+    0 => match t2 {
+      0 => match t3 {
+        0 => t4,
+        _ => t3,
+      },
+      _ => t2,
+    },
+    _ => t1,
+  }
+}
