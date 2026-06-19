@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-SJQ="./bin/sjq"
+SJQ="./bin/main"
 JQ="jq"
 
 # Helper to compare sjq and jq output
