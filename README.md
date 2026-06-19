@@ -21,3 +21,19 @@ diffs output against an oracle. See `.github/workflows/ci.yml`.
 - **`sjq/`** — a `jq`-style JSON filter. Multi-file Sigil program (lexer
   / parser / evaluator), built against Sigil v1.2.0, oracled against
   system `jq`. Design: [`docs/sjq-design.md`](docs/sjq-design.md).
+
+## Build
+
+The root `Makefile` has per-program targets (`sigil` must be on `PATH`,
+or pass `SIGIL=/path/to/bin/sigil`):
+
+```sh
+make            # build every program → bin/<program>
+make sjq        # build one program
+make test       # build + run every entry and oracle (what CI runs)
+make test-sjq   # test one program
+make clean
+```
+
+Add a program by creating `<name>/main.sigil` and appending `<name>` to
+`PROGRAMS` in the `Makefile`.
