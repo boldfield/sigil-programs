@@ -4,7 +4,7 @@ import std.list
 import std.option
 import std.ordering
 use ast.{Filter};
-use std.json.{JValue, JNull, JObject, JONil, JOCons};
+use std.json.{JValue, JNull, JArray, JList, JLNil, JLCons, JObject, JONil, JOCons};
 use std.list.{List, Nil, Cons};
 use std.option.{Option, None, Some};
 use std.ordering.{Ordering, Equal, string_compare};
@@ -18,6 +18,42 @@ fn lookup_field(key: String, obj: JObject) -> Option[JValue] ![] {
         _ => lookup_field(key, rest),
       }
     },
+  }
+}
+
+fn jlist_get(jlist: JList, index: Int) -> Option[JValue] ![] {
+  match index < 0 {
+    true => None,
+    false => {
+      match index {
+        0 => {
+          match jlist {
+            JLNil => None,
+            JLCons(v, _) => Some(v),
+          }
+        },
+        _ => {
+          match jlist {
+            JLNil => None,
+            JLCons(_, rest) => jlist_get(rest, index - 1),
+          }
+        },
+      }
+    },
+  }
+}
+
+fn jlist_to_list(jlist: JList) -> List[JValue] ![] {
+  match jlist {
+    JLNil => Nil,
+    JLCons(v, rest) => Cons(v, jlist_to_list(rest)),
+  }
+}
+
+fn jobject_values(obj: JObject) -> List[JValue] ![] {
+  match obj {
+    JONil => Nil,
+    JOCons(_, v, rest) => Cons(v, jobject_values(rest)),
   }
 }
 
@@ -36,8 +72,25 @@ fn eval(filter: Filter, input: JValue) -> List[JValue] ![] {
         _ => panic("cannot index non-object with string key"),
       }
     },
-    Index(_) => panic("not yet supported: Index"),
-    Iterate => panic("not yet supported: Iterate"),
+    Index(n) => {
+      match input {
+        JArray(jlist) => {
+          match jlist_get(jlist, n) {
+            Some(v) => Cons(v, Nil),
+            None => Cons(JNull, Nil),
+          }
+        },
+        JNull => Cons(JNull, Nil),
+        _ => panic("cannot index non-array with numeric index"),
+      }
+    },
+    Iterate => {
+      match input {
+        JArray(jlist) => jlist_to_list(jlist),
+        JObject(obj) => jobject_values(obj),
+        _ => panic("cannot iterate over non-array/object"),
+      }
+    },
     Pipe(_, _) => panic("not yet supported: Pipe"),
     Length => panic("not yet supported: Length"),
     Keys => panic("not yet supported: Keys"),
