@@ -1,0 +1,23 @@
+import std.json
+
+// Token type covering all tokens in the sjq grammar
+type Token =
+  | Dot
+  | Identifier(String)
+  | LBracket
+  | RBracket
+  | LParen
+  | RParen
+  | Integer(Int)
+  | Pipe
+
+// Filter AST type with all variants for the MVP
+type Filter =
+  | Identity
+  | Field(String)
+  | Index(Int)
+  | Iterate
+  | Pipe(Filter, Filter)
+  | Length
+  | Keys
+  | Select(Filter)
