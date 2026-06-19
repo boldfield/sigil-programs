@@ -6,19 +6,19 @@ fn parse_filter(tokens: List[Token]) -> Filter ![String] {
     perform raise("parse error: empty token list");
   }
 
-  match tokens.get(0)? {
-    Dot => {
+  match tokens.get(0) {
+    Some(Dot) => {
       // After dot, check if there's an identifier
       if tokens.len() == 1 {
         // Just "." — identity
         Identity
       } else {
-        match tokens.get(1)? {
-          Identifier(name) => {
+        match tokens.get(1) {
+          Some(Identifier(name)) => {
             // Start with the first field
             let first_field = Field(name);
             // Check if there are more fields
-            parse_field_chain(tokens, 2, first_field)?
+            parse_field_chain(tokens, 2, first_field)
           }
           _ => {
             perform raise("parse error: expected identifier after dot");
@@ -37,17 +37,17 @@ fn parse_field_chain(tokens: List[Token], pos: Int, acc: Filter) -> Filter ![Str
     // No more tokens, return accumulated result
     acc
   } else {
-    match tokens.get(pos)? {
-      Dot => {
+    match tokens.get(pos) {
+      Some(Dot) => {
         // Expect an identifier next
         if pos + 1 >= tokens.len() {
           perform raise("parse error: expected identifier after dot");
         }
-        match tokens.get(pos + 1)? {
-          Identifier(name) => {
+        match tokens.get(pos + 1) {
+          Some(Identifier(name)) => {
             let next_field = Field(name);
             let piped = Pipe(acc, next_field);
-            parse_field_chain(tokens, pos + 2, piped)?
+            parse_field_chain(tokens, pos + 2, piped)
           }
           _ => {
             perform raise("parse error: expected identifier after dot");
