@@ -1,23 +1,24 @@
 import ast
 import std.io
 use std.io.{IO}
+use ast.{Token, Filter, Dot, Identifier, Integer, PipeTok, Identity, Field, Index, Iterate, Length, Keys, Pipe, Select};
 
 fn main() -> Int ![IO] {
   // Construct sample tokens
-  let _tok1 = ast.Dot;
-  let _tok2 = ast.Identifier("field");
-  let _tok3 = ast.Integer(42);
-  let _tok4 = ast.PipeTok;
+  let _tok1: Token = Dot;
+  let _tok2: Token = Identifier("field");
+  let _tok3: Token = Integer(42);
+  let _tok4: Token = PipeTok;
 
   // Construct sample filter AST nodes
-  let _f1 = ast.Identity;
-  let _f2 = ast.Field("foo");
-  let _f3 = ast.Index(0);
-  let _f4 = ast.Iterate;
-  let _f5 = ast.Length;
-  let _f6 = ast.Keys;
-  let _f7 = ast.Pipe(ast.Identity, ast.Field("x"));
-  let _f8 = ast.Select(ast.Identity);
+  let _f1: Filter = Identity;
+  let _f2: Filter = Field("foo");
+  let _f3: Filter = Index(0);
+  let _f4: Filter = Iterate;
+  let _f5: Filter = Length;
+  let _f6: Filter = Keys;
+  let _f7: Filter = Pipe(Identity, Field("x"));
+  let _f8: Filter = Select(Identity);
 
   perform IO.println("ast: all token and filter variants constructed successfully");
   0
