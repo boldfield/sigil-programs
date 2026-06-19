@@ -1,9 +1,75 @@
 import std.io
+import std.env
+import std.fs
+import std.json
 use std.io.{IO};
+use std.env.{Env};
+use std.fs.{Fs};
+use std.json.{json_parse, json_render};
 
-// Scaffold entry — replaced by the sjq-main-io task. Exists so CI has a
-// green entry to compile + run while the engine modules are authored.
+fn read_stdin_helper(acc: String) -> String ![IO] {
+  match IO.read_line() {
+    Ok(line) => {
+      let new_acc = if acc == "" then line else acc ++ "\n" ++ line;
+      perform read_stdin_helper(new_acc)
+    },
+    Err(_) => acc
+  }
+}
+
+fn process_json(filter: String, value: JValue) -> Int ![IO] {
+  if filter == "." {
+    let rendered = json_render(value);
+    perform IO.println(rendered);
+    0
+  } else {
+    perform IO.println("sjq: unsupported filter");
+    1
+  }
+}
+
 fn main() -> Int ![IO] {
-  perform IO.println("sjq: scaffold");
-  0
+  let args = Env.args;
+
+  match args {
+    [] => {
+      perform IO.println("sjq: filter expression required");
+      1
+    },
+    [filter] => {
+      let input_text = perform read_stdin_helper("");
+      match json_parse(input_text) {
+        Ok(value) => {
+          perform process_json(filter, value)
+        },
+        Err(_) => {
+          perform IO.println("sjq: JSON parse error");
+          1
+        }
+      }
+    },
+    [filter, filename] => {
+      match Fs.read_file(filename) {
+        Ok(input_text) => {
+          match json_parse(input_text) {
+            Ok(value) => {
+              perform process_json(filter, value)
+            },
+            Err(_) => {
+              perform IO.println("sjq: JSON parse error");
+              1
+            }
+          }
+        },
+        Err(_) => {
+          perform IO.println("sjq: cannot read file");
+          1
+        }
+      }
+    },
+    _ => {
+      perform IO.println("sjq: too many arguments");
+      1
+    }
+  }
 }
