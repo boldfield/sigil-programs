@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-SJQ="./bin/sjq"
+SJQ="./bin/main"
 
 # Test 1: JSON identity filter (round-trip)
 echo "  test: identity filter with simple JSON"
