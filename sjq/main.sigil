@@ -1,9 +1,94 @@
+import std.byte_array
+import std.env
+import std.fs
 import std.io
+import std.json
+import std.list
+import std.result
+import std.string
+use std.byte_array.{string_to_bytes};
+use std.env.{env_args};
+use std.fs.{read_file};
 use std.io.{IO};
+use std.json.{JValue, json_parse, json_render};
+use std.list.{Cons, List, Nil};
+use std.result.{Err, Ok};
+use std.string.{string_concat};
 
-// Scaffold entry — replaced by the sjq-main-io task. Exists so CI has a
-// green entry to compile + run while the engine modules are authored.
-fn main() -> Int ![IO] {
-  perform IO.println("sjq: scaffold");
-  0
+fn read_stdin(acc: String) -> String ![IO] {
+  let line: String = perform IO.read_line();
+  if line == "" {
+    acc
+  } else {
+    read_stdin(string_concat(acc, line))
+  }
+}
+
+fn process_json(filter: String, input: String) -> Int ![IO, Mem] {
+  let bytes: ByteArray = string_to_bytes(input);
+  match json_parse(bytes) {
+    Ok(value) => {
+      if filter == "." {
+        let rendered: String = json_render(value);
+        perform IO.println(rendered);
+        0
+      } else {
+        perform IO.println("sjq: unsupported filter");
+        1
+      }
+    },
+    Err(msg) => {
+      let err_msg: String = string_concat("sjq: parse error: ", msg);
+      perform IO.println(err_msg);
+      1
+    },
+  }
+}
+
+fn run_with_file(filter: String, filename: String) -> Int ![IO, Mem, Fs] {
+  match read_file(filename) {
+    Ok(content) => process_json(filter, content),
+    Err(_) => {
+      let err_msg: String = string_concat("sjq: cannot read file: ", filename);
+      perform IO.println(err_msg);
+      1
+    },
+  }
+}
+
+fn run_with_args(filter: String, rest: List[String]) -> Int ![IO, Mem, Fs] {
+  match rest {
+    Nil => {
+      let input: String = read_stdin("");
+      process_json(filter, input)
+    },
+    Cons(filename, more) => {
+      match more {
+        Nil => run_with_file(filter, filename),
+        _ => {
+          perform IO.println("sjq: too many arguments");
+          1
+        },
+      }
+    },
+  }
+}
+
+fn main() -> Int ![IO, Mem, Env, Fs] {
+  let args: List[String] = env_args();
+  match args {
+    Nil => {
+      perform IO.println("sjq: filter expression required");
+      0
+    },
+    Cons(_, user_args) => {
+      match user_args {
+        Nil => {
+          perform IO.println("sjq: filter expression required");
+          0
+        },
+        Cons(filter, rest) => run_with_args(filter, rest),
+      }
+    },
+  }
 }

@@ -25,6 +25,7 @@ $(PROGRAMS):
 
 # make test-<program> — compile + run every entry, then its oracle (if any)
 $(PROGRAMS:%=test-%): test-%:
+	@mkdir -p $(BIN)
 	@for f in $$(grep -rl 'fn main(' $*); do \
 	  out="$(BIN)/$$(basename $$f .sigil)"; \
 	  echo "  build+run $$f"; \
