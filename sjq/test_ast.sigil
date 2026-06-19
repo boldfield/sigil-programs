@@ -1,5 +1,7 @@
+import std.int
 import std.io
 import ast
+use std.int.{int_to_string};
 use std.io.{IO};
 use ast.{Token, Filter};
 
@@ -12,7 +14,7 @@ fn render_token(t: Token) -> String ![] {
     LParen => "(",
     RParen => ")",
     Integer(n) => int_to_string(n),
-    Pipe => "|",
+    PipeTok => "|",
   }
 }
 
