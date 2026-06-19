@@ -10,18 +10,21 @@ use std.json.{json_parse, json_render, JValue};
 use std.byte_array.{string_to_bytes};
 
 fn read_stdin_helper(acc: String) -> String ![IO] {
-  let line = perform IO.read_line();
-  if line == "" {
-    acc
-  } else {
-    let new_acc = if acc == "" { line } else { acc ++ "\n" ++ line };
-    read_stdin_helper(new_acc)
+  match IO.read_line() {
+    Ok(line) => {
+      if line == "" {
+        acc
+      } else {
+        read_stdin_helper(if acc == "" { line } else { acc ++ "\n" ++ line })
+      }
+    },
+    Err(_) => acc
   }
 }
 
 fn process_json(filter: String, value: JValue) -> Int ![IO, Mem] {
   if filter == "." {
-    let rendered = json_render(value);
+    let rendered: String = json_render(value);
     perform IO.println(rendered);
     0
   } else {
@@ -31,9 +34,7 @@ fn process_json(filter: String, value: JValue) -> Int ![IO, Mem] {
 }
 
 fn main() -> Int ![IO, Mem, Env, Fs] {
-  let args = env_args();
-
-  match args {
+  match env_args() {
     [] => {
       0
     },
@@ -41,7 +42,7 @@ fn main() -> Int ![IO, Mem, Env, Fs] {
       0
     },
     [_, filter] => {
-      let input_text = read_stdin_helper("");
+      let input_text: String = read_stdin_helper("");
       match json_parse(string_to_bytes(input_text)) {
         Ok(value) => {
           process_json(filter, value)
