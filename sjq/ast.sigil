@@ -1,0 +1,22 @@
+import std.json
+use std.json.{JValue};
+
+type Token =
+  | Dot
+  | Identifier(String)
+  | LBracket
+  | RBracket
+  | LParen
+  | RParen
+  | Integer(Int)
+  | Pipe
+
+type Filter =
+  | Identity
+  | Field(String)
+  | Index(Int)
+  | Iterate
+  | Pipe(Filter, Filter)
+  | Length
+  | Keys
+  | Select(Filter)
