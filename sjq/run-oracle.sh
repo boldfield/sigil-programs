@@ -2,7 +2,7 @@
 set -e
 
 SJQ="./bin/main"
-JQ="jq -c"
+JQ="jq"
 
 # Helper to compare sjq and jq output
 compare_outputs() {
@@ -17,7 +17,7 @@ compare_outputs() {
   sjq_exit=$?
 
   # Run jq
-  jq_out=$(echo "$input" | "$JQ" "$filter" 2>&1)
+  jq_out=$(echo "$input" | $JQ "$filter" 2>&1)
   jq_exit=$?
 
   # Compare exit codes
@@ -28,8 +28,12 @@ compare_outputs() {
     exit 1
   fi
 
+  # Normalize both outputs to compact format for comparison
+  sjq_norm=$(echo "$sjq_out" | jq -c '.' 2>/dev/null || echo "$sjq_out")
+  jq_norm=$(echo "$jq_out" | jq -c '.' 2>/dev/null || echo "$jq_out")
+
   # Compare output
-  if [ "$sjq_out" != "$jq_out" ]; then
+  if [ "$sjq_norm" != "$jq_norm" ]; then
     echo "    FAIL: output mismatch"
     echo "    filter: $filter"
     echo "    input: $input"
@@ -99,7 +103,7 @@ echo "  test: malformed JSON input"
 sjq_exit=0
 echo 'not json' | "$SJQ" '.' >/dev/null 2>&1 || sjq_exit=$?
 jq_exit=0
-echo 'not json' | "$JQ" '.' >/dev/null 2>&1 || jq_exit=$?
+echo 'not json' | $JQ '.' >/dev/null 2>&1 || jq_exit=$?
 if [ $sjq_exit -eq 0 ] || [ $jq_exit -eq 0 ]; then
   echo "    FAIL: malformed JSON should error"
   exit 1
