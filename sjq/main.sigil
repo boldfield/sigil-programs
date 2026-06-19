@@ -1,3 +1,4 @@
+import std.byte_array
 import std.env
 import std.fs
 import std.io
@@ -7,6 +8,7 @@ import std.mem
 import std.ordering
 import std.result
 import std.string
+use std.byte_array.{string_to_bytes};
 use std.env.{env_args};
 use std.fs.{read_file};
 use std.io.{IO};
@@ -17,31 +19,20 @@ use std.ordering.{Equal, Ordering, string_compare};
 use std.result.{Err, Ok};
 use std.string.{string_concat};
 
-fn read_from_stdin() -> String ![IO] {
-  read_stdin_lines()
-}
-
 fn read_stdin_lines() -> String ![IO] {
-  match perform IO.read_line() {
-    None => "",
-    Some(line) => string_concat(line, string_concat("\n", read_stdin_lines())),
+  let line: String = perform IO.read_line();
+  match string_compare(line, "") {
+    Equal => "",
+    _ => string_concat(line, string_concat("\n", read_stdin_lines())),
   }
 }
 
-fn process_input(filter: String, input: String) -> Int ![IO, Mem] {
+fn process_identity_filter(input: String) -> Int ![IO, Mem] {
   let json_bytes: ByteArray = string_to_bytes(input);
   match json_parse(json_bytes) {
     Ok(value) => {
-      match string_compare(filter, ".") {
-        Equal => {
-          perform IO.println(json_render(value));
-          0
-        },
-        _ => {
-          perform IO.println("error: unsupported filter");
-          1
-        },
-      }
+      perform IO.println(json_render(value));
+      0
     },
     Err(e) => {
       perform IO.println(string_concat("error: ", e));
@@ -53,19 +44,24 @@ fn process_input(filter: String, input: String) -> Int ![IO, Mem] {
 fn read_input_from_file(filename: String) -> String ![IO, Fs] {
   match read_file(filename) {
     Ok(data) => data,
-    Err(_) => {
-      perform IO.println("error: cannot read file");
-      ""
-    },
+    Err(_) => "",
   }
 }
 
-fn handle_input(filter: String, file_args: List[String]) -> Int ![IO, Fs, Mem] {
-  let input: String = match file_args {
-    Nil => read_from_stdin(),
-    Cons(filename, _) => read_input_from_file(filename),
-  };
-  process_input(filter, input)
+fn handle_input(filter: String, file_args: List[String]) -> Int ![IO, Mem, Fs] {
+  match string_compare(filter, ".") {
+    Equal => {
+      let input: String = match file_args {
+        Nil => read_stdin_lines(),
+        Cons(filename, _) => read_input_from_file(filename),
+      };
+      process_identity_filter(input)
+    },
+    _ => {
+      perform IO.println("error: unsupported filter");
+      1
+    },
+  }
 }
 
 fn main() -> Int ![IO, Env, Fs, Mem] {
