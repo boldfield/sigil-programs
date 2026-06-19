@@ -15,8 +15,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install jq (oracle)
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Install jq (oracle) + Boehm GC (Sigil binaries link -lgc)
+        run: sudo apt-get update && sudo apt-get install -y jq libgc-dev
 
       - name: Fetch pinned Sigil toolchain from release
         env:
