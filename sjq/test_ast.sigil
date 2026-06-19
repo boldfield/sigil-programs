@@ -1,0 +1,47 @@
+import std.io
+import ast
+use std.io.{IO};
+use ast.{Token, Filter};
+
+fn render_token(t: Token) -> String ![] {
+  match t {
+    Dot => "Dot",
+    Identifier(s) => s,
+    LBracket => "[",
+    RBracket => "]",
+    LParen => "(",
+    RParen => ")",
+    Integer(n) => int_to_string(n),
+    Pipe => "|",
+  }
+}
+
+fn render_filter(f: Filter) -> String ![] {
+  match f {
+    Identity => "Identity",
+    Field(s) => s,
+    Index(n) => int_to_string(n),
+    Iterate => "Iterate",
+    Pipe(_, _) => "Pipe",
+    Length => "Length",
+    Keys => "Keys",
+    Select(_) => "Select",
+  }
+}
+
+fn main() -> Int ![IO] {
+  let tok_dot: Token = Dot;
+  let tok_id: Token = Identifier("example");
+  let tok_int: Token = Integer(42);
+  perform IO.println("Tokens constructed");
+
+  let filt_identity: Filter = Identity;
+  let filt_field: Filter = Field("name");
+  let filt_index: Filter = Index(0);
+  let filt_pipe: Filter = Pipe(Identity, Field("x"));
+  perform IO.println("Filters constructed");
+
+  perform IO.println(render_token(tok_dot));
+  perform IO.println(render_filter(filt_identity));
+  0
+}
