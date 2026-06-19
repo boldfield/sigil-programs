@@ -32,29 +32,41 @@ fn parse_index_or_iterate(tokens: List[Token]) -> (Filter, List[Token]) ![] {
   }
 }
 
-fn parse(tokens: List[Token]) -> Filter ![] {
+fn parse_primary(tokens: List[Token]) -> (Filter, List[Token]) ![] {
   match tokens {
-    Nil => Identity,
+    Nil => (Identity, Nil),
     Cons(first, rest) => match first {
       Dot => match rest {
-        Nil => Identity,
+        Nil => (Identity, Nil),
         Cons(Identifier(name), next_rest) => match next_rest {
-          Nil => Field(name),
-          Cons(Dot, field_rest) => Pipe(Field(name), parse_field_chain(field_rest)),
-          _ => Field(name),
+          Nil => (Field(name), Nil),
+          Cons(Dot, field_rest) => (Pipe(Field(name), parse_field_chain(field_rest)), Nil),
+          Cons(PipeTok, pipe_rest) => (Field(name), Cons(PipeTok, pipe_rest)),
+          _ => (Field(name), next_rest),
         },
         Cons(LBracket, bracket_rest) => {
           match parse_index_or_iterate(bracket_rest) {
             (bracket_filter, remaining) => match remaining {
-              Nil => bracket_filter,
-              Cons(Dot, field_rest) => Pipe(bracket_filter, parse_field_chain(field_rest)),
-              _ => bracket_filter,
+              Nil => (bracket_filter, Nil),
+              Cons(Dot, field_rest) => (Pipe(bracket_filter, parse_field_chain(field_rest)), Nil),
+              Cons(PipeTok, pipe_rest) => (bracket_filter, Cons(PipeTok, pipe_rest)),
+              _ => (bracket_filter, remaining),
             },
           }
         },
-        _ => Identity,
+        _ => (Identity, rest),
       },
-      _ => Identity,
+      _ => (Identity, tokens),
+    },
+  }
+}
+
+fn parse(tokens: List[Token]) -> Filter ![] {
+  match parse_primary(tokens) {
+    (left, remaining) => match remaining {
+      Nil => left,
+      Cons(PipeTok, pipe_rest) => Pipe(left, parse(pipe_rest)),
+      _ => left,
     },
   }
 }
