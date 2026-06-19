@@ -16,7 +16,7 @@ fn render_token(t: Token) -> String ![] {
     LParen => "(",
     RParen => ")",
     Integer(n) => int_to_string(n),
-    Pipe => "|",
+    PipeTok => "|",
   }
 }
 
