@@ -116,17 +116,80 @@ fn test_keys_filter() -> Int ![IO, Mem] {
   }
 }
 
+fn test_array_index() -> Int ![IO, Mem] {
+  let json_str: String = "[10, 20, 30]";
+  let json_bytes: ByteArray = string_to_bytes(json_str);
+  match json_parse(json_bytes) {
+    Ok(value) => {
+      let tokens: List[Token] = lex(".[1]");
+      let filter: Filter = parse(tokens);
+      let results: List[JValue] = eval(filter, value);
+      render_test_outputs(results)
+    },
+    Err(e) => {
+      perform IO.println(string_concat("error: ", e));
+      1
+    },
+  }
+}
+
+fn test_pipe_filter() -> Int ![IO, Mem] {
+  let json_str: String = "[{\"name\": \"alice\"}, {\"name\": \"bob\"}]";
+  let json_bytes: ByteArray = string_to_bytes(json_str);
+  match json_parse(json_bytes) {
+    Ok(value) => {
+      let tokens: List[Token] = lex(".[] | .name");
+      let filter: Filter = parse(tokens);
+      let results: List[JValue] = eval(filter, value);
+      render_test_outputs(results)
+    },
+    Err(e) => {
+      perform IO.println(string_concat("error: ", e));
+      1
+    },
+  }
+}
+
+fn test_select_filter() -> Int ![IO, Mem] {
+  let json_str: String = "[1, 2, 3, null, false]";
+  let json_bytes: ByteArray = string_to_bytes(json_str);
+  match json_parse(json_bytes) {
+    Ok(value) => {
+      let tokens: List[Token] = lex(".[] | select(.)");
+      let filter: Filter = parse(tokens);
+      let results: List[JValue] = eval(filter, value);
+      render_test_outputs(results)
+    },
+    Err(e) => {
+      perform IO.println(string_concat("error: ", e));
+      1
+    },
+  }
+}
+
 fn main() -> Int ![IO, Mem] {
   let test1: Int = test_identity_filter();
   let test2: Int = test_field_access();
   let test3: Int = test_array_iteration();
   let test4: Int = test_length_filter();
   let test5: Int = test_keys_filter();
+  let test6: Int = test_array_index();
+  let test7: Int = test_pipe_filter();
+  let test8: Int = test_select_filter();
   match test1 {
     0 => match test2 {
       0 => match test3 {
         0 => match test4 {
-          0 => test5,
+          0 => match test5 {
+            0 => match test6 {
+              0 => match test7 {
+                0 => test8,
+                _ => test7,
+              },
+              _ => test6,
+            },
+            _ => test5,
+          },
           _ => test4,
         },
         _ => test3,

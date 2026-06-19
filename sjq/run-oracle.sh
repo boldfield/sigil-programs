@@ -2,67 +2,112 @@
 set -e
 
 SJQ="./bin/main"
+JQ="jq"
 
-# Test 1: JSON identity filter (round-trip)
-echo "  test: identity filter with simple JSON"
-result=$(echo '{"key":"value"}' | "$SJQ" '.')
-if [ "$result" = '{"key": "value"}' ]; then
+# Helper to compare sjq and jq output
+compare_outputs() {
+  local name=$1
+  local filter=$2
+  local input=$3
+
+  echo "  test: $name"
+
+  # Run sjq
+  sjq_out=$(echo "$input" | "$SJQ" "$filter" 2>&1)
+  sjq_exit=$?
+
+  # Run jq
+  jq_out=$(echo "$input" | $JQ "$filter" 2>&1)
+  jq_exit=$?
+
+  # Compare exit codes
+  if [ $sjq_exit -ne $jq_exit ]; then
+    echo "    FAIL: exit code mismatch (sjq: $sjq_exit, jq: $jq_exit)"
+    echo "    sjq output: $sjq_out"
+    echo "    jq output: $jq_out"
+    exit 1
+  fi
+
+  # Normalize both outputs to compact format for comparison
+  sjq_norm=$(echo "$sjq_out" | jq -c '.' 2>/dev/null || echo "$sjq_out")
+  jq_norm=$(echo "$jq_out" | jq -c '.' 2>/dev/null || echo "$jq_out")
+
+  # Compare output
+  if [ "$sjq_norm" != "$jq_norm" ]; then
+    echo "    FAIL: output mismatch"
+    echo "    filter: $filter"
+    echo "    input: $input"
+    echo "    sjq output:"
+    echo "$sjq_out"
+    echo "    jq output:"
+    echo "$jq_out"
+    exit 1
+  fi
+
   echo "    PASS"
-else
-  echo "    FAIL: expected {'key': 'value'}, got '$result'"
+}
+
+echo "Oracle suite: sjq vs jq"
+
+# MVP Form 1: Identity (.)
+compare_outputs "identity with simple object" "." '{"key":"value"}'
+compare_outputs "identity with array" "." '[1,2,3]'
+compare_outputs "identity with null" "." 'null'
+compare_outputs "identity with number" "." '42'
+compare_outputs "identity with string" "." '"hello"'
+compare_outputs "identity with boolean" "." 'true'
+
+# MVP Form 2: Field (.foo)
+compare_outputs "field access existing" ".foo" '{"foo":"bar"}'
+compare_outputs "field access missing" ".missing" '{"foo":"bar"}'
+compare_outputs "field access from null" ".foo" 'null'
+compare_outputs "field access nested" ".outer" '{"outer":{"inner":"value"}}'
+
+# MVP Form 3: Index ([n])
+compare_outputs "array index 0" ".[0]" '[10,20,30]'
+compare_outputs "array index 1" ".[1]" '[10,20,30]'
+compare_outputs "array index out of range" ".[5]" '[10,20]'
+compare_outputs "array index on null" ".[0]" 'null'
+
+# MVP Form 4: Iterate (.[], .[])
+compare_outputs "iterate array" ".[]" '[1,2,3]'
+compare_outputs "iterate object values" ".[]" '{"a":1,"b":2}'
+compare_outputs "iterate empty array" ".[]" '[]'
+compare_outputs "iterate empty object" ".[]" '{}'
+
+# MVP Form 5: Pipe (|)
+compare_outputs "pipe identity then field" ". | .foo" '{"foo":"bar"}'
+compare_outputs "pipe iterate then field" ".[] | .name" '[{"name":"alice"},{"name":"bob"}]'
+compare_outputs "pipe field then iterate" '.items | .[]' '{"items":[1,2,3]}'
+
+# MVP Form 6: Length
+compare_outputs "length of array" "length" '[1,2,3,4,5]'
+compare_outputs "length of object" "length" '{"a":1,"b":2}'
+compare_outputs "length of string" "length" '"hello"'
+compare_outputs "length of null" "length" 'null'
+compare_outputs "length of empty array" "length" '[]'
+
+# MVP Form 7: Keys
+compare_outputs "keys of object" "keys" '{"z":1,"a":2,"m":3}'
+compare_outputs "keys of array" "keys" '[10,20,30]'
+compare_outputs "keys of empty object" "keys" '{}'
+compare_outputs "keys of empty array" "keys" '[]'
+
+# MVP Form 8: Select
+compare_outputs "select truthy number" ".[] | select(.)" '[1,2,3,null,false]'
+compare_outputs "select truthy object" ".[] | select(.active)" '[{"active":true},{"active":false}]'
+compare_outputs "select with pipe" ".[] | select(.x)" '[{"x":1},{"x":2},{"y":3}]'
+
+# Error cases: malformed JSON
+echo "  test: malformed JSON input"
+sjq_exit=0
+echo 'not json' | "$SJQ" '.' >/dev/null 2>&1 || sjq_exit=$?
+jq_exit=0
+echo 'not json' | $JQ '.' >/dev/null 2>&1 || jq_exit=$?
+if [ $sjq_exit -eq 0 ] || [ $jq_exit -eq 0 ]; then
+  echo "    FAIL: malformed JSON should error"
   exit 1
 fi
+echo "    PASS"
 
-# Test 2: Array JSON identity filter
-echo "  test: identity filter with array"
-result=$(echo '[1,2,3]' | "$SJQ" '.')
-if [ "$result" = '[1, 2, 3]' ]; then
-  echo "    PASS"
-else
-  echo "    FAIL: expected [1, 2, 3], got '$result'"
-  exit 1
-fi
-
-# Test 3: Null JSON
-echo "  test: identity filter with null"
-result=$(echo 'null' | "$SJQ" '.')
-if [ "$result" = 'null' ]; then
-  echo "    PASS"
-else
-  echo "    FAIL: expected null, got '$result'"
-  exit 1
-fi
-
-# Test 4: Field access filter
-echo "  test: field access filter"
-result=$(echo '{"foo":"bar"}' | "$SJQ" '.foo')
-if [ "$result" = '"bar"' ]; then
-  echo "    PASS"
-else
-  echo "    FAIL: expected \"bar\", got '$result'"
-  exit 1
-fi
-
-# Test 5: Array iteration filter
-echo "  test: array iteration filter"
-result=$(echo '[1,2,3]' | "$SJQ" '.[]')
-expected="1
-2
-3"
-if [ "$result" = "$expected" ]; then
-  echo "    PASS"
-else
-  echo "    FAIL: expected multi-line output, got '$result'"
-  exit 1
-fi
-
-# Test 6: Invalid JSON should error
-echo "  test: invalid JSON errors"
-if echo 'not json' | "$SJQ" '.' 2>/dev/null; then
-  echo "    FAIL: expected non-zero exit code for invalid JSON"
-  exit 1
-else
-  echo "    PASS"
-fi
-
-echo "  oracle: all tests passed"
+echo "Oracle suite: all tests passed"
