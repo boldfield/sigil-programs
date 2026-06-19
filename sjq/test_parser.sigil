@@ -45,5 +45,9 @@ fn main() -> Int ![IO] {
   let result_dot_bracket_bracket: Filter = parse(dot_bracket_bracket);
   perform IO.println(string_concat("parse([Dot, LBracket, RBracket]) = ", render_filter(result_dot_bracket_bracket)));
 
+  let dot_foo_pipe_dot_bar: List[Token] = Cons(Dot, Cons(Identifier("foo"), Cons(PipeTok, Cons(Dot, Cons(Identifier("bar"), Nil)))));
+  let result_dot_foo_pipe_dot_bar: Filter = parse(dot_foo_pipe_dot_bar);
+  perform IO.println(string_concat("parse([Dot, Identifier(\"foo\"), PipeTok, Dot, Identifier(\"bar\")]) = ", render_filter(result_dot_foo_pipe_dot_bar)));
+
   0
 }

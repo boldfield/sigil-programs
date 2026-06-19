@@ -33,6 +33,7 @@ fn __lex_chars(chars: List[Char], acc: List[Token]) -> List[Token] ![] {
     Cons(c, rest) => {
       match c {
         '.' => __lex_chars(rest, Cons(Dot, acc)),
+        '|' => __lex_chars(rest, Cons(PipeTok, acc)),
         _ => {
           match is_id_start(c) {
             true => {
