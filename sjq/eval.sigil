@@ -4,7 +4,7 @@ import std.list
 import std.option
 import std.ordering
 use ast.{Filter};
-use std.json.{JValue, JObject, JONil, JOCons};
+use std.json.{JValue, JNull, JObject, JONil, JOCons};
 use std.list.{List, Nil, Cons};
 use std.option.{Option, None, Some};
 use std.ordering.{Ordering, Equal, string_compare};
@@ -29,17 +29,18 @@ fn eval(filter: Filter, input: JValue) -> List[JValue] ![] {
         JObject(obj) => {
           match lookup_field(key, obj) {
             Some(v) => Cons(v, Nil),
-            None => Nil,
+            None => Cons(JNull, Nil),
           }
         },
-        _ => Nil,
+        JNull => Cons(JNull, Nil),
+        _ => panic("cannot index non-object with string key"),
       }
     },
-    Index(_) => Nil,
-    Iterate => Nil,
-    Pipe(_, _) => Nil,
-    Length => Nil,
-    Keys => Nil,
-    Select(_) => Nil,
+    Index(_) => panic("not yet supported: Index"),
+    Iterate => panic("not yet supported: Iterate"),
+    Pipe(_, _) => panic("not yet supported: Pipe"),
+    Length => panic("not yet supported: Length"),
+    Keys => panic("not yet supported: Keys"),
+    Select(_) => panic("not yet supported: Select"),
   }
 }

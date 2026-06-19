@@ -4,22 +4,71 @@ import std.io
 import std.json
 import std.list
 import std.mem
+import std.ordering
+import std.string
 use ast.{Filter, Identity, Field};
 use eval.{eval};
 use std.io.{IO};
-use std.json.{JValue, JObject, JOCons, JONil, JInt, JString, json_render};
+use std.json.{JValue, JObject, JOCons, JONil, JInt, JString, JNull, json_render};
 use std.list.{List, Nil, Cons};
 use std.mem.{Mem};
+use std.ordering.{Equal, string_compare};
+use std.string.{string_concat};
 
-fn print_list(results: List[JValue]) -> Int ![IO, Mem] {
-  match results {
-    Nil => {
-      perform IO.println("[]");
-      0
+fn int_equal(a: Int, b: Int) -> Bool ![] {
+  match a - b {
+    0 => true,
+    _ => false,
+  }
+}
+
+fn jvalues_equal(x: JValue, y: JValue) -> Bool ![] {
+  match x {
+    JNull => {
+      match y {
+        JNull => true,
+        _ => false,
+      }
     },
-    Cons(v, rest) => {
-      perform IO.println(json_render(v));
-      print_list(rest)
+    JInt(a) => {
+      match y {
+        JInt(b) => int_equal(a, b),
+        _ => false,
+      }
+    },
+    JString(a) => {
+      match y {
+        JString(b) => {
+          match string_compare(a, b) {
+            Equal => true,
+            _ => false,
+          }
+        },
+        _ => false,
+      }
+    },
+    _ => false,
+  }
+}
+
+fn list_equals(xs: List[JValue], ys: List[JValue]) -> Bool ![] {
+  match xs {
+    Nil => {
+      match ys {
+        Nil => true,
+        _ => false,
+      }
+    },
+    Cons(x, xs_rest) => {
+      match ys {
+        Nil => false,
+        Cons(y, ys_rest) => {
+          match jvalues_equal(x, y) {
+            true => list_equals(xs_rest, ys_rest),
+            false => false,
+          }
+        },
+      }
     },
   }
 }
@@ -28,8 +77,17 @@ fn test_identity() -> Int ![IO, Mem] {
   let input: JValue = JInt(42);
   let filter: Filter = Identity;
   let results: List[JValue] = eval(filter, input);
-  perform IO.println("test_identity:");
-  print_list(results)
+  let expected: List[JValue] = Cons(JInt(42), Nil);
+  match list_equals(results, expected) {
+    true => {
+      perform IO.println("test_identity: PASS");
+      0
+    },
+    false => {
+      perform IO.println("test_identity: FAIL");
+      1
+    },
+  }
 }
 
 fn test_field() -> Int ![IO, Mem] {
@@ -37,8 +95,17 @@ fn test_field() -> Int ![IO, Mem] {
   let input: JValue = JObject(obj);
   let filter: Filter = Field("name");
   let results: List[JValue] = eval(filter, input);
-  perform IO.println("test_field:");
-  print_list(results)
+  let expected: List[JValue] = Cons(JString("alice"), Nil);
+  match list_equals(results, expected) {
+    true => {
+      perform IO.println("test_field: PASS");
+      0
+    },
+    false => {
+      perform IO.println("test_field: FAIL");
+      1
+    },
+  }
 }
 
 fn test_field_missing() -> Int ![IO, Mem] {
@@ -46,29 +113,26 @@ fn test_field_missing() -> Int ![IO, Mem] {
   let input: JValue = JObject(obj);
   let filter: Filter = Field("missing");
   let results: List[JValue] = eval(filter, input);
-  perform IO.println("test_field_missing:");
-  print_list(results)
-}
-
-fn test_field_on_non_object() -> Int ![IO, Mem] {
-  let input: JValue = JInt(42);
-  let filter: Filter = Field("name");
-  let results: List[JValue] = eval(filter, input);
-  perform IO.println("test_field_on_non_object:");
-  print_list(results)
+  let expected: List[JValue] = Cons(JNull, Nil);
+  match list_equals(results, expected) {
+    true => {
+      perform IO.println("test_field_missing: PASS");
+      0
+    },
+    false => {
+      perform IO.println("test_field_missing: FAIL");
+      1
+    },
+  }
 }
 
 fn main() -> Int ![IO, Mem] {
   let t1: Int = test_identity();
   let t2: Int = test_field();
   let t3: Int = test_field_missing();
-  let t4: Int = test_field_on_non_object();
   match t1 {
     0 => match t2 {
-      0 => match t3 {
-        0 => t4,
-        _ => t3,
-      },
+      0 => t3,
       _ => t2,
     },
     _ => t1,
