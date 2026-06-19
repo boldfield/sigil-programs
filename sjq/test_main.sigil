@@ -1,0 +1,47 @@
+import std.byte_array
+import std.io
+import std.json
+import std.mem
+import std.result
+use std.byte_array.{string_to_bytes};
+use std.io.{IO};
+use std.json.{json_parse, json_render};
+use std.mem.{Mem};
+use std.result.{Err, Ok};
+
+fn test_identity_passthrough() -> Int ![IO, Mem] {
+  let json_str: String = "{\"name\": \"test\", \"value\": 42}";
+  let json_bytes: ByteArray = string_to_bytes(json_str);
+  match json_parse(json_bytes) {
+    Ok(value) => {
+      let rendered: String = json_render(value);
+      perform IO.println(rendered);
+      0
+    },
+    Err(e) => {
+      perform IO.println(e);
+      1
+    },
+  }
+}
+
+fn test_invalid_json() -> Int ![IO] {
+  let invalid_json: String = "{invalid json}";
+  let json_bytes: ByteArray = string_to_bytes(invalid_json);
+  match json_parse(json_bytes) {
+    Ok(_) => {
+      perform IO.println("error: should have failed to parse");
+      1
+    },
+    Err(_) => 0,
+  }
+}
+
+fn main() -> Int ![IO, Mem] {
+  let test1: Int = test_identity_passthrough();
+  let test2: Int = test_invalid_json();
+  match test1 {
+    0 => test2,
+    _ => test1,
+  }
+}
