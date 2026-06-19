@@ -1,0 +1,9 @@
+import std.io
+use std.io.{IO};
+
+// Scaffold entry — replaced by the sjq-main-io task. Exists so CI has a
+// green entry to compile + run while the engine modules are authored.
+fn main() -> Int ![IO] {
+  perform IO.println("sjq: scaffold");
+  0
+}

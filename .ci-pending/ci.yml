@@ -1,0 +1,62 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+env:
+  # Pinned Sigil compiler release the programs build against.
+  SIGIL_VERSION: v1.2.0
+
+jobs:
+  sjq:
+    name: sjq (build + run + oracle)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install jq (oracle)
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Fetch pinned Sigil toolchain from release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sigil
+          gh release download "$SIGIL_VERSION" \
+            -R boldfield/sigil \
+            -p '*x86_64-unknown-linux-gnu.tar.gz' \
+            -D /tmp/sigil --clobber
+          tar xzf /tmp/sigil/*.tar.gz -C /tmp/sigil
+          BIN_DIR="$(dirname "$(find /tmp/sigil -type f -name sigil)")"
+          echo "$BIN_DIR" >> "$GITHUB_PATH"
+          "$BIN_DIR/sigil" --version || true
+
+      - name: Compile + run every sjq entry
+        run: |
+          set -euo pipefail
+          # An "entry" is any .sigil file that defines `fn main`.
+          # Imports resolve root-anchored to the entry's own directory.
+          entries="$(grep -rl 'fn main(' sjq || true)"
+          if [ -z "$entries" ]; then
+            echo "no sjq entries yet (scaffold)"; exit 0
+          fi
+          for f in $entries; do
+            out="/tmp/$(basename "$f" .sigil).bin"
+            echo "::group::compile $f"
+            sigil "$f" -o "$out"
+            echo "::endgroup::"
+            echo "::group::run $f"
+            "$out"
+            echo "::endgroup::"
+          done
+
+      - name: Oracle suite vs jq
+        run: |
+          set -euo pipefail
+          if [ -x sjq/run-oracle.sh ]; then
+            ./sjq/run-oracle.sh
+          else
+            echo "no oracle suite yet (added by sjq-oracle task)"
+          fi
