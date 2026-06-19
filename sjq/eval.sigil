@@ -1,0 +1,46 @@
+import ast
+import std.json
+import std.list
+import std.option
+import std.ordering
+use ast.{Filter};
+use std.json.{JValue, JNull, JObject, JONil, JOCons};
+use std.list.{List, Nil, Cons};
+use std.option.{Option, None, Some};
+use std.ordering.{Ordering, Equal, string_compare};
+
+fn lookup_field(key: String, obj: JObject) -> Option[JValue] ![] {
+  match obj {
+    JONil => None,
+    JOCons(k, v, rest) => {
+      match string_compare(k, key) {
+        Equal => Some(v),
+        _ => lookup_field(key, rest),
+      }
+    },
+  }
+}
+
+fn eval(filter: Filter, input: JValue) -> List[JValue] ![] {
+  match filter {
+    Identity => Cons(input, Nil),
+    Field(key) => {
+      match input {
+        JObject(obj) => {
+          match lookup_field(key, obj) {
+            Some(v) => Cons(v, Nil),
+            None => Cons(JNull, Nil),
+          }
+        },
+        JNull => Cons(JNull, Nil),
+        _ => panic("cannot index non-object with string key"),
+      }
+    },
+    Index(_) => panic("not yet supported: Index"),
+    Iterate => panic("not yet supported: Iterate"),
+    Pipe(_, _) => panic("not yet supported: Pipe"),
+    Length => panic("not yet supported: Length"),
+    Keys => panic("not yet supported: Keys"),
+    Select(_) => panic("not yet supported: Select"),
+  }
+}
