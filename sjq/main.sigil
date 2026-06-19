@@ -1,9 +1,88 @@
+import std.env
+import std.fs
 import std.io
+import std.json
+import std.list
+import std.mem
+import std.ordering
+import std.result
+import std.string
+use std.env.{env_args};
+use std.fs.{read_file};
 use std.io.{IO};
+use std.json.{json_parse, json_render};
+use std.list.{Cons, List, Nil};
+use std.mem.{Mem};
+use std.ordering.{Equal, Ordering, string_compare};
+use std.result.{Err, Ok};
+use std.string.{string_concat};
 
-// Scaffold entry — replaced by the sjq-main-io task. Exists so CI has a
-// green entry to compile + run while the engine modules are authored.
-fn main() -> Int ![IO] {
-  perform IO.println("sjq: scaffold");
-  0
+fn read_from_stdin() -> String ![IO] {
+  read_stdin_lines()
+}
+
+fn read_stdin_lines() -> String ![IO] {
+  match perform IO.read_line() {
+    None => "",
+    Some(line) => string_concat(line, string_concat("\n", read_stdin_lines())),
+  }
+}
+
+fn process_input(filter: String, input: String) -> Int ![IO, Mem] {
+  let json_bytes: ByteArray = string_to_bytes(input);
+  match json_parse(json_bytes) {
+    Ok(value) => {
+      match string_compare(filter, ".") {
+        Equal => {
+          perform IO.println(json_render(value));
+          0
+        },
+        _ => {
+          perform IO.println("error: unsupported filter");
+          1
+        },
+      }
+    },
+    Err(e) => {
+      perform IO.println(string_concat("error: ", e));
+      1
+    },
+  }
+}
+
+fn read_input_from_file(filename: String) -> String ![IO, Fs] {
+  match read_file(filename) {
+    Ok(data) => data,
+    Err(_) => {
+      perform IO.println("error: cannot read file");
+      ""
+    },
+  }
+}
+
+fn handle_input(filter: String, file_args: List[String]) -> Int ![IO, Fs, Mem] {
+  let input: String = match file_args {
+    Nil => read_from_stdin(),
+    Cons(filename, _) => read_input_from_file(filename),
+  };
+  process_input(filter, input)
+}
+
+fn main() -> Int ![IO, Env, Fs, Mem] {
+  let argv: List[String] = env_args();
+  match argv {
+    Nil => {
+      perform IO.println("usage: sjq <filter> [file]");
+      1
+    },
+    Cons(_prog, rest) => {
+      match rest {
+        Nil => {
+          perform IO.println("usage: sjq <filter> [file]");
+          1
+        },
+        Cons(filter, file_args) => handle_input(filter, file_args),
+      }
+    },
+  }
 }
