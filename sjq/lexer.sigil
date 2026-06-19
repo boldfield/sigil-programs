@@ -1,0 +1,60 @@
+import ast
+import std.string
+import std.list
+use ast.{Token, Dot, Identifier};
+use std.string.{String};
+use std.list.{List};
+
+fn is_identifier_char(c: String) -> Bool {
+  let code = String.char_code_at(c, 0);
+  (code >= 48 && code <= 57) ||     // 0-9
+  (code >= 65 && code <= 90) ||     // A-Z
+  (code >= 97 && code <= 122) ||    // a-z
+  code == 95                         // _
+}
+
+fn lex_identifier(s: String, pos: Int) -> {String, Int} {
+  let len = String.length(s);
+  fn lex_identifier_loop(p: Int, acc: String) -> {String, Int} {
+    if p >= len {
+      {acc, p}
+    } else {
+      let c = String.get(s, p);
+      if is_identifier_char(c) {
+        lex_identifier_loop(p + 1, String.append(acc, c))
+      } else {
+        {acc, p}
+      }
+    }
+  };
+  lex_identifier_loop(pos, "")
+}
+
+type LexResult =
+  | Ok(List[Token])
+  | Error(String)
+
+fn lex(s: String) -> LexResult {
+  let len = String.length(s);
+
+  fn lex_loop(pos: Int, tokens: List[Token]) -> LexResult {
+    if pos >= len {
+      Ok(tokens)
+    } else {
+      let c = String.get(s, pos);
+
+      if c == "." {
+        let new_tokens = List.append(tokens, Dot);
+        lex_loop(pos + 1, new_tokens)
+      } else if is_identifier_char(c) {
+        let {ident, new_pos} = lex_identifier(s, pos);
+        let new_tokens = List.append(tokens, Identifier(ident));
+        lex_loop(new_pos, new_tokens)
+      } else {
+        Error(String.append("Unexpected character: ", c))
+      }
+    }
+  };
+
+  lex_loop(0, [])
+}
