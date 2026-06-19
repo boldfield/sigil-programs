@@ -33,16 +33,30 @@ else
   exit 1
 fi
 
-# Test 4: Non-identity filter should error
-echo "  test: non-identity filter errors"
-if "$SJQ" '.foo' <<< '{"foo":"bar"}' 2>/dev/null; then
-  echo "    FAIL: expected non-zero exit code"
-  exit 1
-else
+# Test 4: Field access filter
+echo "  test: field access filter"
+result=$(echo '{"foo":"bar"}' | "$SJQ" '.foo')
+if [ "$result" = '"bar"' ]; then
   echo "    PASS"
+else
+  echo "    FAIL: expected \"bar\", got '$result'"
+  exit 1
 fi
 
-# Test 5: Invalid JSON should error
+# Test 5: Array iteration filter
+echo "  test: array iteration filter"
+result=$(echo '[1,2,3]' | "$SJQ" '.[]')
+expected="1
+2
+3"
+if [ "$result" = "$expected" ]; then
+  echo "    PASS"
+else
+  echo "    FAIL: expected multi-line output, got '$result'"
+  exit 1
+fi
+
+# Test 6: Invalid JSON should error
 echo "  test: invalid JSON errors"
 if echo 'not json' | "$SJQ" '.' 2>/dev/null; then
   echo "    FAIL: expected non-zero exit code for invalid JSON"
