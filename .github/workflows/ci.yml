@@ -6,7 +6,7 @@ on:
 
 env:
   # Pinned Sigil compiler release the programs build against.
-  SIGIL_VERSION: v1.2.0
+  SIGIL_VERSION: v1.3.0
 
 jobs:
   sjq:

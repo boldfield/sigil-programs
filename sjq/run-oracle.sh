@@ -98,6 +98,13 @@ compare_outputs "select truthy number" ".[] | select(.)" '[1,2,3,null,false]'
 compare_outputs "select truthy object" ".[] | select(.active)" '[{"active":true},{"active":false}]'
 compare_outputs "select with pipe" ".[] | select(.x)" '[{"x":1},{"x":2},{"y":3}]'
 
+# Scale regression: sjq previously aborted (SIGABRT) parsing JSON arrays
+# larger than ~84 elements, due to the runtime's fixed 256-frame CPS
+# continuation cap. Fixed by the growable continuation stack in Sigil
+# v1.3.0; this locks the regression in.
+compare_outputs "large array length (10k elems)" "length" "$(jq -cn '[range(10000)]')"
+compare_outputs "large array iterate+field (2k objs)" ".[] | .v" "$(jq -cn '[range(2000) | {v: .}]')"
+
 # Error cases: malformed JSON
 echo "  test: malformed JSON input"
 sjq_exit=0
