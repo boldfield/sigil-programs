@@ -18,25 +18,20 @@ fn find_host_header(headers: List[Header]) -> Option[String] ![] {
   match headers {
     Nil => None,
     Cons(h, rest) => {
-      match h.name {
-        "Host" => Some(h.value),
-        _ => find_host_header(rest),
+      if h.name == "Host" {
+        Some(h.value)
+      } else {
+        find_host_header(rest)
       }
     },
   }
 }
 
 fn verify_request(req: Request) -> Int ![IO] {
-  let method_ok: Bool = match req.method {
-    "GET" => true,
-    _ => false,
-  };
+  let method_ok: Bool = req.method == "GET";
   let host: String = req.url.host;
   let host_header_ok: Bool = match find_host_header(req.headers) {
-    Some(h) => match h {
-      "example.com" => true,
-      _ => false,
-    },
+    Some(h) => h == "example.com",
     None => false,
   };
   match method_ok {
