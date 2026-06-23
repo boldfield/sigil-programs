@@ -1,13 +1,18 @@
 import std.byte_array
 import std.http
+import std.list
 import std.net
 import std.ordering
 import std.result
-use std.byte_array.{byte_array_length, byte_array_slice_opt};
-use std.http.{Request, Response};
-use std.net.{Conn, connect, send, recv_all, close, NetError, Other};
+import std.string
+
+use std.byte_array.{byte_array_get_opt, byte_array_length, byte_array_slice_opt, byte_to_int, string_from_bytes, string_to_bytes};
+use std.http.{Header, Request, Response};
+use std.list.{Cons, List, Nil, reverse};
+use std.net.{Conn, NetError, Other, close, connect, recv_all, send};
 use std.ordering.{Equal, string_compare};
 use std.result.{Err, Ok, Result};
+use std.string.{string_concat, string_split, string_to_int};
 
 fn net_error_to_string(err: NetError) -> String ![] {
   match err {
@@ -19,6 +24,110 @@ fn net_error_to_string(err: NetError) -> String ![] {
   }
 }
 
+fn headers_to_string_acc(headers: List[Header], acc: String) -> String ![] {
+  match headers {
+    Nil => acc,
+    Cons(h, rest) =>
+      headers_to_string_acc(rest,
+        string_concat(acc, string_concat(string_concat(h.name, ": "), string_concat(h.value, "\r\n")))),
+  }
+}
+
+fn request_head_bytes(req: Request) -> ByteArray ![] {
+  let path_q = match string_compare(req.url.query, "") {
+    Equal => req.url.path,
+    _ => string_concat(string_concat(req.url.path, "?"), req.url.query),
+  };
+  let line1 = string_concat(string_concat(string_concat(req.method, " "), path_q), " HTTP/1.1\r\n");
+  let host_h = string_concat("Host: ", string_concat(req.url.host, "\r\n"));
+  let hdrs = headers_to_string_acc(req.headers, "");
+  string_to_bytes(string_concat(string_concat(string_concat(line1, host_h), hdrs), "\r\n"))
+}
+
+fn is_crlf_crlf(a: Byte, b: Byte, c: Byte, d: Byte) -> Bool ![] {
+  match (byte_to_int(a) == 13, byte_to_int(b) == 10, byte_to_int(c) == 13, byte_to_int(d) == 10) {
+    (true, true, true, true) => true,
+    _ => false,
+  }
+}
+
+fn find_header_end(bytes: ByteArray, pos: Int) -> Option[Int] ![] {
+  match (byte_array_get_opt(bytes, pos),
+         byte_array_get_opt(bytes, pos + 1),
+         byte_array_get_opt(bytes, pos + 2),
+         byte_array_get_opt(bytes, pos + 3)) {
+    (Some(a), Some(b), Some(c), Some(d)) =>
+      match is_crlf_crlf(a, b, c, d) {
+        true => Some(pos + 4),
+        false => find_header_end(bytes, pos + 1),
+      },
+    _ => None,
+  }
+}
+
+fn join_words_acc(parts: List[String], acc: String) -> String ![] {
+  match parts {
+    Nil => acc,
+    Cons(word, rest) => match string_compare(acc, "") {
+      Equal => join_words_acc(rest, word),
+      _ => join_words_acc(rest, string_concat(string_concat(acc, " "), word)),
+    },
+  }
+}
+
+fn parse_status(line: String) -> Result[(Int, String), String] ![] {
+  match string_split(line, " ") {
+    Nil => Err("empty status line"),
+    Cons(_, rest) => match rest {
+      Nil => Err("missing status code"),
+      Cons(code_str, reason_parts) => match string_to_int(code_str) {
+        Err(_) => Err(string_concat("bad status code: ", code_str)),
+        Ok(code) => Ok((code, join_words_acc(reason_parts, ""))),
+      },
+    },
+  }
+}
+
+fn parse_header_lines(lines: List[String], acc: List[Header]) -> Result[List[Header], String] ![] {
+  match lines {
+    Nil => Ok(reverse(acc)),
+    Cons(line, rest) => match string_compare(line, "") {
+      Equal => Ok(reverse(acc)),
+      _ => match std.http.parse_header(line) {
+        Err(msg) => Err(msg),
+        Ok(h) => parse_header_lines(rest, Cons(h, acc)),
+      },
+    },
+  }
+}
+
+fn parse_response_bytes(bytes: ByteArray) -> Result[Response, String] ![] {
+  match find_header_end(bytes, 0) {
+    None => Err("no header end in response"),
+    Some(body_start) =>
+      match byte_array_slice_opt(bytes, 0, body_start - 4) {
+        None => Err("header slice failed"),
+        Some(head_bytes) => match string_from_bytes(head_bytes) {
+          None => Err("non-UTF-8 in response headers"),
+          Some(head_str) => match string_split(head_str, "\r\n") {
+            Nil => Err("empty response"),
+            Cons(status_line, header_lines) => match parse_status(status_line) {
+              Err(msg) => Err(msg),
+              Ok((code, reason)) => match parse_header_lines(header_lines, Nil) {
+                Err(msg) => Err(msg),
+                Ok(headers) =>
+                  match byte_array_slice_opt(bytes, body_start, byte_array_length(bytes)) {
+                    None => Ok(Response { status: code, reason: reason, headers: headers, body: string_to_bytes("") }),
+                    Some(body) => Ok(Response { status: code, reason: reason, headers: headers, body: body }),
+                  },
+              },
+            },
+          },
+        },
+      },
+  }
+}
+
 fn send_all(conn: Conn, data: ByteArray) -> Result[Unit, NetError] ![Net] {
   send_all_loop(conn, data, 0, byte_array_length(data))
 }
@@ -26,21 +135,15 @@ fn send_all(conn: Conn, data: ByteArray) -> Result[Unit, NetError] ![Net] {
 fn send_all_loop(conn: Conn, data: ByteArray, pos: Int, total: Int) -> Result[Unit, NetError] ![Net] {
   match pos >= total {
     true => Ok(()),
-    false => {
-      match byte_array_slice_opt(data, pos, total) {
-        None => Err(Other("slice out of bounds")),
-        Some(chunk) => {
-          match send(conn, chunk) {
-            Err(e) => Err(e),
-            Ok(n) => {
-              match n > 0 {
-                true => send_all_loop(conn, data, pos + n, total),
-                false => Err(Other("zero bytes sent")),
-              }
-            },
-          }
+    false => match byte_array_slice_opt(data, pos, total) {
+      None => Err(Other("slice out of bounds")),
+      Some(chunk) => match send(conn, chunk) {
+        Err(e) => Err(e),
+        Ok(n) => match n > 0 {
+          true => send_all_loop(conn, data, pos + n, total),
+          false => Err(Other("zero bytes sent")),
         },
-      }
+      },
     },
   }
 }
@@ -50,26 +153,27 @@ fn fetch(req: Request) -> Result[Response, String] ![Net] {
   match connect(req.url.host, req.url.port, tls) {
     Err(e) => Err(net_error_to_string(e)),
     Ok(conn) => {
-      let request_bytes: ByteArray = std.http.serialize_request(req);
-      match send_all(conn, request_bytes) {
+      let head: ByteArray = request_head_bytes(req);
+      match send_all(conn, head) {
         Err(e) => {
           let _: Result[Unit, NetError] = close(conn);
           Err(net_error_to_string(e))
         },
-        Ok(_) => {
-          match recv_all(conn) {
+        Ok(_) => match send_all(conn, req.body) {
+          Err(e) => {
+            let _: Result[Unit, NetError] = close(conn);
+            Err(net_error_to_string(e))
+          },
+          Ok(_) => match recv_all(conn) {
             Err(e) => {
               let _: Result[Unit, NetError] = close(conn);
               Err(net_error_to_string(e))
             },
-            Ok(response_bytes) => {
+            Ok(resp_bytes) => {
               let _: Result[Unit, NetError] = close(conn);
-              match std.http.parse_response(response_bytes) {
-                Err(msg) => Err(msg),
-                Ok(resp) => Ok(resp),
-              }
+              parse_response_bytes(resp_bytes)
             },
-          }
+          },
         },
       }
     },
