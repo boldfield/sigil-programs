@@ -9,15 +9,12 @@ use base64.{base64_encode};
 fn test_vector(input: String, expected: String) -> Int ![IO] {
   let data: ByteArray = string_to_bytes(input);
   let result: String = base64_encode(data);
-  match result {
-    _ if result == expected => {
-      perform IO.println("PASS");
-      0
-    },
-    _ => {
-      perform IO.println("FAIL: got " + result + " expected " + expected);
-      1
-    },
+  if result == expected {
+    perform IO.println("PASS");
+    0
+  } else {
+    perform IO.println("FAIL: got " + result + " expected " + expected);
+    1
   }
 }
 
