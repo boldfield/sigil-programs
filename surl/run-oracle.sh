@@ -56,17 +56,40 @@ if [ "$ready" -ne 1 ]; then
   exit 1
 fi
 
-# Compare surl's GET body against curl's. Command substitution strips
-# trailing newlines on both sides, so surl's trailing newline (it prints the
-# body with a newline) does not cause a spurious mismatch.
-surl_output="$("$surl_bin" "$url")"
-curl_output="$(curl -s "$url")"
+# Compare surl's GET output against curl's, byte for byte, with NO masking.
+#
+# surl emits the response body followed by exactly one '\n', and that newline
+# is forced by the Sigil runtime — it is not something we can drop here. The
+# std.io stdout is a Rust LineWriter that flushes only on a newline, so a body
+# printed without a trailing newline (IO.print) stays buffered and never
+# reaches the pipe — the body is lost entirely. main.sigil therefore uses
+# IO.println, which flushes the body at the cost of one trailing newline that
+# `curl -s` never adds. Byte-exact equality with curl is thus impossible; the
+# precise, true relationship is: surl output == curl output + one '\n'.
+#
+# We assert exactly that, comparing raw bytes with `cmp` instead of letting
+# `$(...)` silently strip trailing newlines from both sides. That keeps the
+# oracle honest: the single runtime-mandated newline is the ONLY tolerated
+# difference, so a missing/garbled body, an extra newline, or trailing
+# whitespace all still fail the check.
+surl_out="$tmpdir/surl.out"
+curl_out="$tmpdir/curl.out"
+expected="$tmpdir/expected.out"
 
-if [ "$surl_output" != "$curl_output" ]; then
-  echo "ERROR: surl output does not match curl output"
-  echo "surl output: '$surl_output'"
-  echo "curl output: '$curl_output'"
+"$surl_bin" "$url" > "$surl_out"
+curl -s "$url" > "$curl_out"
+
+# expected = curl's body plus the single trailing newline surl's println adds.
+cat "$curl_out" > "$expected"
+printf '\n' >> "$expected"
+
+if ! cmp -s "$surl_out" "$expected"; then
+  echo "ERROR: surl output does not match curl output (+ one trailing newline)"
+  echo "--- surl output (od -c) ---"
+  od -c "$surl_out"
+  echo "--- curl output (od -c) ---"
+  od -c "$curl_out"
   exit 1
 fi
 
-echo "  surl GET body matches curl: '$surl_output'"
+echo "  surl GET body matches curl (modulo surl's single trailing newline)"
