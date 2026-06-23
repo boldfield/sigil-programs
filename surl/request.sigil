@@ -11,10 +11,7 @@ use args.{Config};
 fn build_request(c: Config) -> Result[Request, String] ![] {
   match parse_url(c.url) {
     Ok(url_obj) => {
-      let host_header: Header = {
-        name: "Host",
-        value: url_obj.host,
-      };
+      let host_header: Header = Header { name: "Host", value: url_obj.host };
       let headers: List[Header] = Cons(host_header, Nil);
       let req: Request = get(url_obj, headers);
       Ok(req)
