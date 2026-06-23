@@ -1,11 +1,13 @@
 import std.http
 import std.url
 import std.list
+import std.byte_array
 import args
 
-use std.http.{Request, Header, get};
+use std.http.{Request, Header};
 use std.url.{parse_url};
 use std.list.{Cons, Nil};
+use std.byte_array.{byte_array_empty};
 use args.{Config};
 
 fn build_request(c: Config) -> Result[Request, String] ![] {
@@ -13,7 +15,12 @@ fn build_request(c: Config) -> Result[Request, String] ![] {
     Ok(url_obj) => {
       let host_header: Header = Header { name: "Host", value: url_obj.host };
       let headers: List[Header] = Cons(host_header, Nil);
-      let req: Request = get(url_obj, headers);
+      let req: Request = Request {
+        method: "GET",
+        url: url_obj,
+        headers: headers,
+        body: byte_array_empty(),
+      };
       Ok(req)
     },
     Err(e) => Err(e),
