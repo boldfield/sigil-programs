@@ -11,9 +11,11 @@ BIN   := bin
 
 PROGRAMS := sjq surl
 
-.PHONY: all test clean help $(PROGRAMS) $(PROGRAMS:%=test-%)
+.PHONY: all test check clean help $(PROGRAMS) $(PROGRAMS:%=test-%)
 
 all: $(PROGRAMS)            ## Build every program
+
+check: test                 ## Build + run all entries and oracles (alias for test)
 
 help:                      ## List available targets
 	@grep -hE '^[a-zA-Z_%-]+:.*##' $(MAKEFILE_LIST) | sort | sed -E 's/:.*## / - /'
