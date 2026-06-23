@@ -1,7 +1,9 @@
 import std.byte_array
 import std.char
-use std.byte_array.{byte_array_get_opt};
+import std.string
+use std.byte_array.{byte_array_get_opt, byte_to_int};
 use std.char.{char_to_string};
+use std.string.{string_concat};
 
 fn base64_char(index: Int) -> Char ![] {
   match index {
@@ -23,9 +25,9 @@ fn encode_chunk(b1: Byte, b2: Byte, b3: Byte) -> (Char, Char, Char, Char) ![] {
   let b3_int: Int = byte_to_int(b3);
   let value: Int = b1_int * 65536 + b2_int * 256 + b3_int;
 
-  let c1: Int = int_shr(value, 18);
-  let c2: Int = (int_shr(value, 12)) % 64;
-  let c3: Int = (int_shr(value, 6)) % 64;
+  let c1: Int = value / 262144;
+  let c2: Int = (value / 4096) % 64;
+  let c3: Int = (value / 64) % 64;
   let c4: Int = value % 64;
 
   (base64_char(c1), base64_char(c2), base64_char(c3), base64_char(c4))
@@ -36,9 +38,9 @@ fn encode_two_bytes(b1: Byte, b2: Byte) -> (Char, Char, Char) ![] {
   let b2_int: Int = byte_to_int(b2);
   let value: Int = b1_int * 65536 + b2_int * 256;
 
-  let c1: Int = int_shr(value, 18);
-  let c2: Int = (int_shr(value, 12)) % 64;
-  let c3: Int = (int_shr(value, 6)) % 64;
+  let c1: Int = value / 262144;
+  let c2: Int = (value / 4096) % 64;
+  let c3: Int = (value / 64) % 64;
 
   (base64_char(c1), base64_char(c2), base64_char(c3))
 }
@@ -47,8 +49,8 @@ fn encode_one_byte(b1: Byte) -> (Char, Char) ![] {
   let b1_int: Int = byte_to_int(b1);
   let value: Int = b1_int * 65536;
 
-  let c1: Int = int_shr(value, 18);
-  let c2: Int = (int_shr(value, 12)) % 64;
+  let c1: Int = value / 262144;
+  let c2: Int = (value / 4096) % 64;
 
   (base64_char(c1), base64_char(c2))
 }
@@ -61,16 +63,16 @@ fn encode_chunks(
   match (byte_array_get_opt(data, pos), byte_array_get_opt(data, pos + 1), byte_array_get_opt(data, pos + 2)) {
     (Some(b1), Some(b2), Some(b3)) => {
       let (c1, c2, c3, c4) = encode_chunk(b1, b2, b3);
-      let new_acc = acc + char_to_string(c1) + char_to_string(c2) + char_to_string(c3) + char_to_string(c4);
+      let new_acc = string_concat(string_concat(string_concat(string_concat(acc, char_to_string(c1)), char_to_string(c2)), char_to_string(c3)), char_to_string(c4));
       encode_chunks(data, pos + 3, new_acc)
     },
     (Some(b1), Some(b2), None) => {
       let (c1, c2, c3) = encode_two_bytes(b1, b2);
-      acc + char_to_string(c1) + char_to_string(c2) + char_to_string(c3) + "="
+      string_concat(string_concat(string_concat(string_concat(acc, char_to_string(c1)), char_to_string(c2)), char_to_string(c3)), "=")
     },
     (Some(b1), None, _) => {
       let (c1, c2) = encode_one_byte(b1);
-      acc + char_to_string(c1) + char_to_string(c2) + "=="
+      string_concat(string_concat(string_concat(acc, char_to_string(c1)), char_to_string(c2)), "==")
     },
     (None, _, _) => acc,
   }

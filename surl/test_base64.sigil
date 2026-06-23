@@ -1,9 +1,12 @@
 import std.byte_array
 import std.char
 import std.io
+import std.string
+import base64
 use std.byte_array.{string_to_bytes};
 use std.char.{char_to_string};
 use std.io.{IO};
+use std.string.{string_concat};
 use base64.{base64_encode};
 
 fn test_vector(input: String, expected: String) -> Int ![IO] {
@@ -13,7 +16,8 @@ fn test_vector(input: String, expected: String) -> Int ![IO] {
     perform IO.println("PASS");
     0
   } else {
-    perform IO.println("FAIL: got " + result + " expected " + expected);
+    let msg: String = string_concat(string_concat(string_concat(string_concat("FAIL: got ", result), " expected "), expected), "");
+    perform IO.println(msg);
     1
   }
 }
