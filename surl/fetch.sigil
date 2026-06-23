@@ -34,13 +34,13 @@ fn headers_to_string_acc(headers: List[Header], acc: String) -> String ![] {
 }
 
 fn request_head_bytes(req: Request) -> ByteArray ![] {
-  let path_q = match string_compare(req.url.query, "") {
+  let path_q: String = match string_compare(req.url.query, "") {
     Equal => req.url.path,
     _ => string_concat(string_concat(req.url.path, "?"), req.url.query),
   };
-  let line1 = string_concat(string_concat(string_concat(req.method, " "), path_q), " HTTP/1.1\r\n");
-  let host_h = string_concat("Host: ", string_concat(req.url.host, "\r\n"));
-  let hdrs = headers_to_string_acc(req.headers, "");
+  let line1: String = string_concat(string_concat(string_concat(req.method, " "), path_q), " HTTP/1.1\r\n");
+  let host_h: String = string_concat("Host: ", string_concat(req.url.host, "\r\n"));
+  let hdrs: String = headers_to_string_acc(req.headers, "");
   string_to_bytes(string_concat(string_concat(string_concat(line1, host_h), hdrs), "\r\n"))
 }
 
