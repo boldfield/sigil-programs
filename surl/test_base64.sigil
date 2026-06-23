@@ -1,24 +1,29 @@
 import std.byte_array
 import std.char
 import std.io
+import std.ordering
 import std.string
 import base64
 use std.byte_array.{string_to_bytes};
 use std.char.{char_to_string};
 use std.io.{IO};
+use std.ordering.{Equal, string_compare};
 use std.string.{string_concat};
 use base64.{base64_encode};
 
 fn test_vector(input: String, expected: String) -> Int ![IO] {
   let data: ByteArray = string_to_bytes(input);
   let result: String = base64_encode(data);
-  if result == expected {
-    perform IO.println("PASS");
-    0
-  } else {
-    let msg: String = string_concat(string_concat(string_concat(string_concat("FAIL: got ", result), " expected "), expected), "");
-    perform IO.println(msg);
-    1
+  match string_compare(result, expected) {
+    Equal => {
+      perform IO.println("PASS");
+      0
+    },
+    _ => {
+      let msg: String = string_concat(string_concat(string_concat(string_concat("FAIL: got ", result), " expected "), expected), "");
+      perform IO.println(msg);
+      1
+    },
   }
 }
 
