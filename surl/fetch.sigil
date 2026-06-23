@@ -43,24 +43,35 @@ fn byte_len(data: ByteArray, pos: Int) -> Int ![] {
   }
 }
 
-// Scan for \r\n\r\n (CR=13, LF=10) and return the position of the first
-// byte AFTER the sequence (i.e. the start of the HTTP body). If the
-// sequence is not found, returns the end-of-array position so that
-// a subsequent byte_array_slice_opt call produces None.
+// Scan for \r\n\r\n (CR=13, LF=10) and return the index of the first
+// body byte (i.e. position after the four-byte sequence). Uses nested
+// single-value integer matches — not tuple-literal patterns — so it is
+// robust across all Sigil compiler versions.
 fn find_body_start(bytes: ByteArray, pos: Int) -> Int ![] {
-  match (byte_array_get_opt(bytes, pos), byte_array_get_opt(bytes, pos + 1)) {
-    (None, _) => pos,
-    (Some(a), Some(b)) => match (byte_to_int(a), byte_to_int(b)) {
-      (13, 10) => match (byte_array_get_opt(bytes, pos + 2), byte_array_get_opt(bytes, pos + 3)) {
-        (Some(c), Some(d)) => match (byte_to_int(c), byte_to_int(d)) {
-          (13, 10) => pos + 4,
+  match byte_array_get_opt(bytes, pos) {
+    None => pos,
+    Some(a) => match byte_to_int(a) {
+      13 => match byte_array_get_opt(bytes, pos + 1) {
+        None => pos + 1,
+        Some(b) => match byte_to_int(b) {
+          10 => match byte_array_get_opt(bytes, pos + 2) {
+            None => pos + 2,
+            Some(c) => match byte_to_int(c) {
+              13 => match byte_array_get_opt(bytes, pos + 3) {
+                None => pos + 3,
+                Some(d) => match byte_to_int(d) {
+                  10 => pos + 4,
+                  _ => find_body_start(bytes, pos + 1),
+                },
+              },
+              _ => find_body_start(bytes, pos + 1),
+            },
+          },
           _ => find_body_start(bytes, pos + 1),
         },
-        _ => find_body_start(bytes, pos + 1),
       },
       _ => find_body_start(bytes, pos + 1),
     },
-    _ => find_body_start(bytes, pos + 1),
   }
 }
 
@@ -89,6 +100,11 @@ fn send_all(conn: Conn, data: ByteArray) -> Result[Unit, NetError] ![Net] {
 // fetch: connect, send the serialized request, read the full response,
 // close, and return the parsed Response. The connection is closed on
 // every exit path. Net/parse errors are surfaced as a String.
+//
+// parse_response handles status/headers; we also extract the body from
+// the raw bytes directly (HTTP/1.0 servers like python3 -m http.server
+// may not populate parse_response's body field). Only overrides when
+// body_start < total to avoid replacing a valid body with an empty slice.
 fn fetch(req: Request) -> Result[Response, String] ![Net, Mem] {
   let tls: Bool = match string_compare(req.url.scheme, "https") {
     Equal => true,
@@ -110,21 +126,21 @@ fn fetch(req: Request) -> Result[Response, String] ![Net, Mem] {
           },
           Ok(resp_bytes) => {
             let _: Result[Unit, NetError] = close(conn);
-            // parse_response may return an empty body for some servers
-            // (e.g. python3 -m http.server / HTTP 1.0). Extract the body
-            // directly from the raw bytes so we always populate it.
             let body_start: Int = find_body_start(resp_bytes, 0);
             let total: Int = byte_len(resp_bytes, 0);
             match parse_response(resp_bytes) {
               Err(e) => Err(e),
-              Ok(resp) => match byte_array_slice_opt(resp_bytes, body_start, total) {
-                None => Ok(resp),
-                Some(body) => Ok(Response {
-                  status: resp.status,
-                  reason: resp.reason,
-                  headers: resp.headers,
-                  body: body,
-                }),
+              Ok(resp) => match body_start < total {
+                false => Ok(resp),
+                true => match byte_array_slice_opt(resp_bytes, body_start, total) {
+                  None => Ok(resp),
+                  Some(body) => Ok(Response {
+                    status: resp.status,
+                    reason: resp.reason,
+                    headers: resp.headers,
+                    body: body,
+                  }),
+                },
               },
             }
           },
