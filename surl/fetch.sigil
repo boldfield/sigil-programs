@@ -1,0 +1,77 @@
+import std.byte_array
+import std.http
+import std.net
+import std.ordering
+import std.result
+use std.byte_array.{byte_array_length, byte_array_slice_opt};
+use std.http.{Request, Response};
+use std.net.{Conn, connect, send, recv_all, close, NetError, Other};
+use std.ordering.{Equal, string_compare};
+use std.result.{Err, Ok, Result};
+
+fn net_error_to_string(err: NetError) -> String ![] {
+  match err {
+    ResolveFailed => "DNS resolution failed",
+    ConnectionRefused => "Connection refused",
+    TlsError(msg) => msg,
+    Closed => "Connection closed",
+    Other(msg) => msg,
+  }
+}
+
+fn send_all(conn: Conn, data: ByteArray) -> Result[Unit, NetError] ![Net] {
+  send_all_loop(conn, data, 0, byte_array_length(data))
+}
+
+fn send_all_loop(conn: Conn, data: ByteArray, pos: Int, total: Int) -> Result[Unit, NetError] ![Net] {
+  match pos >= total {
+    true => Ok(()),
+    false => {
+      match byte_array_slice_opt(data, pos, total) {
+        None => Err(Other("slice out of bounds")),
+        Some(chunk) => {
+          match send(conn, chunk) {
+            Err(e) => Err(e),
+            Ok(n) => {
+              match n > 0 {
+                true => send_all_loop(conn, data, pos + n, total),
+                false => Err(Other("zero bytes sent")),
+              }
+            },
+          }
+        },
+      }
+    },
+  }
+}
+
+fn fetch(req: Request) -> Result[Response, String] ![Net] {
+  let tls: Bool = match string_compare(req.url.scheme, "https") { Equal => true, _ => false };
+  match connect(req.url.host, req.url.port, tls) {
+    Err(e) => Err(net_error_to_string(e)),
+    Ok(conn) => {
+      let request_bytes: ByteArray = std.http.serialize_request(req);
+      match send_all(conn, request_bytes) {
+        Err(e) => {
+          let _: Result[Unit, NetError] = close(conn);
+          Err(net_error_to_string(e))
+        },
+        Ok(_) => {
+          match recv_all(conn) {
+            Err(e) => {
+              let _: Result[Unit, NetError] = close(conn);
+              Err(net_error_to_string(e))
+            },
+            Ok(response_bytes) => {
+              let _: Result[Unit, NetError] = close(conn);
+              match std.http.parse_response(response_bytes) {
+                Err(msg) => Err(msg),
+                Ok(resp) => Ok(resp),
+              }
+            },
+          }
+        },
+      }
+    },
+  }
+}
