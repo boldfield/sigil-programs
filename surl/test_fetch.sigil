@@ -1,18 +1,21 @@
 import std.io
+import std.url
 import std.http
 import std.list
+import std.net
 import fetch
 use std.io.{IO};
-use std.http.{Request, Response, Header, Url};
+use std.url.{Url};
+use std.http.{Request, Response, Header};
 use std.list.{List, Nil};
 use fetch.{fetch};
 
-fn main() -> Int ![IO, Net] {
+fn main() -> Int ![IO, Net, Mem] {
   let url: Url = Url { scheme: "http", host: "127.0.0.1", port: 1, path: "/test", query: "" };
   let headers: List[Header] = Nil;
   let req: Request = std.http.get(url, headers);
 
-  match perform fetch(req) {
+  match fetch(req) {
     Ok(_) => {
       perform IO.println("ERROR: expected connection refused, got Ok");
       1
