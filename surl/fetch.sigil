@@ -1,7 +1,9 @@
+import std.byte_array
 import std.http
 import std.net
+use std.byte_array.{byte_array_length, byte_array_slice_opt};
 use std.http.{Request, Response};
-use std.net.{connect, send, recv_all, close, NetError};
+use std.net.{Conn, connect, send, recv_all, close, NetError, Other};
 
 fn net_error_to_string(err: NetError) -> String ![] {
   match err {
@@ -13,12 +15,38 @@ fn net_error_to_string(err: NetError) -> String ![] {
   }
 }
 
+fn send_all(conn: Conn, data: ByteArray) -> Result[Unit, NetError] ![Net] {
+  send_all_helper(conn, data, 0, byte_array_length(data))
+}
+
+fn send_all_helper(conn: Conn, data: ByteArray, pos: Int, total: Int) -> Result[Unit, NetError] ![Net] {
+  match pos >= total {
+    true => Ok(()),
+    false => {
+      match byte_array_slice_opt(data, pos, total) {
+        None => Err(Other("slice out of bounds")),
+        Some(chunk) => {
+          match send(conn, chunk) {
+            Err(e) => Err(e),
+            Ok(n) => {
+              match n > 0 {
+                true => send_all_helper(conn, data, pos + n, total),
+                false => Err(Other("zero bytes sent")),
+              }
+            },
+          }
+        },
+      }
+    },
+  }
+}
+
 fn fetch(req: Request) -> Result[Response, String] ![Net, Mem] {
   match connect(req.url.host, req.url.port, req.url.scheme == "https") {
     Err(e) => Err(net_error_to_string(e)),
     Ok(conn) => {
       let request_bytes: ByteArray = std.http.serialize_request(req);
-      match send(conn, request_bytes) {
+      match send_all(conn, request_bytes) {
         Err(e) => {
           let _: Result[Unit, NetError] = close(conn);
           Err(net_error_to_string(e))
