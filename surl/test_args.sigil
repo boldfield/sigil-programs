@@ -1,8 +1,10 @@
 import std.io
 import std.list
+import std.string
 import args
 use std.io.{IO};
 use std.list.{Cons, List, Nil};
+use std.string.{string_concat};
 use args.{parse_args, Config};
 
 fn bool_to_string(b: Bool) -> String ![] {
@@ -13,15 +15,15 @@ fn bool_to_string(b: Bool) -> String ![] {
 }
 
 fn print_config(config: Config) -> Int ![IO] {
-  perform IO.println("url: " + config.url);
-  perform IO.println("method: " + config.method);
-  perform IO.println("data: " + config.data);
-  perform IO.println("output: " + config.output);
-  perform IO.println("head_only: " + bool_to_string(config.head_only));
-  perform IO.println("follow: " + bool_to_string(config.follow));
-  perform IO.println("user: " + config.user);
-  perform IO.println("verbose: " + bool_to_string(config.verbose));
-  perform IO.println("insecure: " + bool_to_string(config.insecure));
+  perform IO.println(string_concat("url: ", config.url));
+  perform IO.println(string_concat("method: ", config.method));
+  perform IO.println(string_concat("data: ", config.data));
+  perform IO.println(string_concat("output: ", config.output));
+  perform IO.println(string_concat("head_only: ", bool_to_string(config.head_only)));
+  perform IO.println(string_concat("follow: ", bool_to_string(config.follow)));
+  perform IO.println(string_concat("user: ", config.user));
+  perform IO.println(string_concat("verbose: ", bool_to_string(config.verbose)));
+  perform IO.println(string_concat("insecure: ", bool_to_string(config.insecure)));
   0
 }
 
@@ -34,7 +36,7 @@ fn main() -> Int ![IO] {
       print_config(config)
     },
     Err(msg) => {
-      perform IO.println("Error: " + msg);
+      perform IO.println(string_concat("Error: ", msg));
       1
     },
   }
