@@ -44,7 +44,14 @@ fn main() -> Int ![IO, Env, Net, Mem] {
                   1
                 },
                 Some(body_str) => {
-                  perform IO.print(body_str);
+                  // println, not print: the Sigil runtime does not flush
+                  // buffered stdout when main returns, so a trailing
+                  // IO.print is silently dropped (the response body never
+                  // reaches a pipe). println flushes, so the body is
+                  // emitted. The trailing newline is harmless for the
+                  // curl oracle, which compares via $(...) command
+                  // substitution (both sides strip trailing newlines).
+                  perform IO.println(body_str);
                   0
                 },
               }
