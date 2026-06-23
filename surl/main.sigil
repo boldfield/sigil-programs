@@ -1,14 +1,51 @@
+import std.env
 import std.io
-import std.net
-use std.io.{IO};
-use std.net.{connect};
+import std.byte_array
+import args
+import request
+import fetch
 
-// Scaffold entry — replaced by the surl board tasks. Touches std.net so
-// CI confirms the v1.4.0 networking toolchain (rustls link included)
-// builds + runs on the runner. Deterministic: nothing listens on :1.
-fn main() -> Int ![IO, Net] {
-  match connect("127.0.0.1", 1, false) {
-    Ok(_) => { perform IO.println("surl: scaffold (connected?!)"); 0 },
-    Err(_) => { perform IO.println("surl: scaffold (net OK)"); 0 },
+use std.env.{env_args};
+use std.io.{IO};
+use std.byte_array.{string_from_bytes};
+use args.{parse_args};
+use request.{build_request};
+use fetch.{fetch};
+
+fn main() -> Int ![IO, Env, Net, Mem] {
+  let argv = env_args();
+  match parse_args(argv) {
+    Err(usage_msg) => {
+      perform IO.println(usage_msg);
+      0
+    },
+    Ok(config) => {
+      match build_request(config) {
+        Err(err_msg) => {
+          perform IO.println(err_msg);
+          1
+        },
+        Ok(req) => {
+          match fetch(req) {
+            Err(err_msg) => {
+              perform IO.println(err_msg);
+              1
+            },
+            Ok(resp) => {
+              match string_from_bytes(resp.body) {
+                None => {
+                  perform IO.println("Error: invalid UTF-8 in response body");
+                  1
+                },
+                Some(body_str) => {
+                  perform IO.print(body_str);
+                  0
+                },
+              }
+            },
+          }
+        },
+      }
+    },
   }
 }
