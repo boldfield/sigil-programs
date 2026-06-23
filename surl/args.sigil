@@ -1,5 +1,7 @@
 import std.list
+import std.result
 use std.list.{Cons, List, Nil};
+use std.result.{Err, Ok, Result};
 
 type Config = {
   url: String,
@@ -25,19 +27,19 @@ fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
     Nil => Err(usage()),
     Cons(_, Nil) => Err(usage()),
     Cons(_, Cons(url, _)) => {
-      Ok({
-        url = url,
-        method = "GET",
-        headers = Nil,
-        data = "",
-        output = "",
-        head_only = false,
-        follow = false,
-        user = "",
-        cookie = "",
-        cookie_jar = "",
-        verbose = false,
-        insecure = false,
+      Ok(Config {
+        url: url,
+        method: "GET",
+        headers: Nil,
+        data: "",
+        output: "",
+        head_only: false,
+        follow: false,
+        user: "",
+        cookie: "",
+        cookie_jar: "",
+        verbose: false,
+        insecure: false,
       })
     },
   }
