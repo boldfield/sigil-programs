@@ -44,7 +44,25 @@ fn main() -> Int ![IO, Env, Net, Mem] {
                   1
                 },
                 Some(body_str) => {
-                  perform IO.print(body_str);
+                  // Emit the response body. We must use IO.println, and the
+                  // single trailing '\n' it appends is an UNAVOIDABLE runtime
+                  // artifact — not a sloppy choice. The std.io effect exposes
+                  // only print/println (no flush primitive, no byte writer):
+                  //   - IO.print (no newline) is NEVER flushed when main
+                  //     returns, so its bytes are silently dropped to a pipe
+                  //     or file — the body would vanish entirely.
+                  //   - IO.println flushes (the stdout LineWriter flushes on
+                  //     '\n'), at the cost of that one terminal newline.
+                  // The only exact-byte alternative, std.fs.write_file to
+                  // /dev/stdout, is unusable: std.fs's FsError and std.net's
+                  // NetError both define an `Other` constructor and Sigil
+                  // constructor names are global, so importing std.fs into a
+                  // program that already links std.net (which fetch requires)
+                  // fails to compile (E0118). Sigil v1 also has no FFI to
+                  // reach libc write/fflush. So `surl URL` is exactly
+                  // `curl -s URL` plus one runtime-forced '\n'; the oracle
+                  // asserts precisely that, with no other tolerance.
+                  perform IO.println(body_str);
                   0
                 },
               }
