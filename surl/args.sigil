@@ -1,0 +1,46 @@
+import std.list
+import std.result
+use std.list.{Cons, List, Nil};
+use std.result.{Err, Ok, Result};
+
+type Config = {
+  url: String,
+  method: String,
+  headers: List[(String,String)],
+  data: String,
+  output: String,
+  head_only: Bool,
+  follow: Bool,
+  user: String,
+  cookie: String,
+  cookie_jar: String,
+  verbose: Bool,
+  insecure: Bool,
+}
+
+fn usage() -> String ![] {
+  "usage: surl [options] <url>"
+}
+
+fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
+  match argv {
+    Nil => Err(usage()),
+    Cons(_, Nil) => Err(usage()),
+    Cons(_, Cons(url, _)) => {
+      Ok(Config {
+        url: url,
+        method: "GET",
+        headers: Nil,
+        data: "",
+        output: "",
+        head_only: false,
+        follow: false,
+        user: "",
+        cookie: "",
+        cookie_jar: "",
+        verbose: false,
+        insecure: false,
+      })
+    },
+  }
+}
