@@ -3,13 +3,15 @@ import std.list
 import std.string
 import std.option
 import std.http
+import std.ordering
 import args
 import request
 
 use std.io.{IO};
 use std.list.{Cons, List, Nil};
-use std.string.{string_concat};
+use std.string.{string_concat, string_compare};
 use std.option.{None, Option, Some};
+use std.ordering.{Equal};
 use std.http.{Header, Request};
 use args.{Config};
 use request.{build_request};
@@ -18,20 +20,25 @@ fn find_host_header(headers: List[Header]) -> Option[String] ![] {
   match headers {
     Nil => None,
     Cons(h, rest) => {
-      if h.name == "Host" {
-        Some(h.value)
-      } else {
-        find_host_header(rest)
+      match string_compare(h.name, "Host") {
+        Equal => Some(h.value),
+        _ => find_host_header(rest),
       }
     },
   }
 }
 
 fn verify_request(req: Request) -> Int ![IO] {
-  let method_ok: Bool = req.method == "GET";
+  let method_ok: Bool = match string_compare(req.method, "GET") {
+    Equal => true,
+    _ => false,
+  };
   let host: String = req.url.host;
   let host_header_ok: Bool = match find_host_header(req.headers) {
-    Some(h) => h == "example.com",
+    Some(h) => match string_compare(h, "example.com") {
+      Equal => true,
+      _ => false,
+    },
     None => false,
   };
   match method_ok {
