@@ -9,7 +9,7 @@
 SIGIL ?= sigil
 BIN   := bin
 
-PROGRAMS := sjq
+PROGRAMS := sjq surl
 
 .PHONY: all test clean help $(PROGRAMS) $(PROGRAMS:%=test-%)
 

@@ -1,0 +1,14 @@
+import std.io
+import std.net
+use std.io.{IO};
+use std.net.{connect};
+
+// Scaffold entry — replaced by the surl board tasks. Touches std.net so
+// CI confirms the v1.4.0 networking toolchain (rustls link included)
+// builds + runs on the runner. Deterministic: nothing listens on :1.
+fn main() -> Int ![IO, Net] {
+  match connect("127.0.0.1", 1, false) {
+    Ok(_) => { perform IO.println("surl: scaffold (connected?!)"); 0 },
+    Err(_) => { perform IO.println("surl: scaffold (net OK)"); 0 },
+  }
+}

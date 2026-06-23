@@ -19,8 +19,11 @@ diffs output against an oracle. See `.github/workflows/ci.yml`.
 ## Programs
 
 - **`sjq/`** — a `jq`-style JSON filter. Multi-file Sigil program (lexer
-  / parser / evaluator), built against Sigil v1.2.0, oracled against
-  system `jq`. Design: [`docs/sjq-design.md`](docs/sjq-design.md).
+  / parser / evaluator), oracled against system `jq`. Design:
+  [`docs/sjq-design.md`](docs/sjq-design.md).
+- **`surl/`** — a `curl`-style HTTP client. Uses `std.net`/`url`/`http`
+  (TCP + TLS), oracled against system `curl`. Built against Sigil
+  v1.4.0.
 
 ## Build
 
