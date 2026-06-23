@@ -1,19 +1,25 @@
 import std.env
 import std.io
 import std.byte_array
+import std.list
+import std.mem
+import std.net
 import args
 import request
 import fetch
 
-use std.env.{env_args};
+use std.env.{env_args, Env};
 use std.io.{IO};
 use std.byte_array.{string_from_bytes};
+use std.list.{List};
+use std.mem.{Mem};
+use std.net.{Net};
 use args.{parse_args};
 use request.{build_request};
 use fetch.{fetch};
 
 fn main() -> Int ![IO, Env, Net, Mem] {
-  let argv = env_args();
+  let argv: List[String] = env_args();
   match parse_args(argv) {
     Err(usage_msg) => {
       perform IO.println(usage_msg);
