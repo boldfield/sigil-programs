@@ -1,0 +1,34 @@
+import std.io
+import std.list
+import args
+use std.io.{IO};
+use std.list.{Cons, List, Nil};
+use args.{parse_args, Config};
+
+fn print_config(config: Config) -> Int ![IO] {
+  perform IO.println("url: " + config.url);
+  perform IO.println("method: " + config.method);
+  perform IO.println("data: " + config.data);
+  perform IO.println("output: " + config.output);
+  perform IO.println("head_only: " + (if config.head_only then "true" else "false"));
+  perform IO.println("follow: " + (if config.follow then "true" else "false"));
+  perform IO.println("user: " + config.user);
+  perform IO.println("verbose: " + (if config.verbose then "true" else "false"));
+  perform IO.println("insecure: " + (if config.insecure then "true" else "false"));
+  0
+}
+
+fn main() -> Int ![IO] {
+  let argv: List[String] = Cons("surl", Cons("http://h/p", Nil));
+
+  match parse_args(argv) {
+    Ok(config) => {
+      perform IO.println("Config parsed successfully:");
+      print_config(config)
+    },
+    Err(msg) => {
+      perform IO.println("Error: " + msg);
+      1
+    },
+  }
+}
