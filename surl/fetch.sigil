@@ -15,7 +15,7 @@ import std.net
 import std.ordering
 import std.result
 use std.byte_array.{byte_array_get_opt, byte_array_slice_opt};
-use std.http.{Request, Response, find_blank_line, find_content_length, parse_response, serialize_request};
+use std.http.{Request, Response, parse_response, serialize_request};
 use std.mem.{Mem};
 use std.net.{Closed, Conn, ConnectionRefused, NetError, Other, ResolveFailed, TlsError, close, connect, recv_all, send};
 use std.ordering.{Equal, string_compare};
@@ -33,7 +33,9 @@ fn net_error_to_string(err: NetError) -> String ![] {
 }
 
 // Length of a ByteArray, found by scanning to the first absent index.
-// Used only for the send side (serialize_request output).
+// Avoids depending on a byte_array_length helper that the proven repo
+// code (surl/base64.sigil) does not use; the scan mirrors that file's
+// get_opt/None termination pattern.
 fn byte_len(data: ByteArray, pos: Int) -> Int ![] {
   match byte_array_get_opt(data, pos) {
     None => pos,
@@ -66,10 +68,6 @@ fn send_all(conn: Conn, data: ByteArray) -> Result[Unit, NetError] ![Net] {
 // fetch: connect, send the serialized request, read the full response,
 // close, and return the parsed Response. The connection is closed on
 // every exit path. Net/parse errors are surfaced as a String.
-//
-// parse_response parses status and headers but does not populate body.
-// Body is extracted from the raw bytes using find_blank_line (which
-// locates the body start with Mem effect) and find_content_length.
 fn fetch(req: Request) -> Result[Response, String] ![Net, Mem] {
   let tls: Bool = match string_compare(req.url.scheme, "https") {
     Equal => true,
@@ -91,27 +89,7 @@ fn fetch(req: Request) -> Result[Response, String] ![Net, Mem] {
           },
           Ok(resp_bytes) => {
             let _: Result[Unit, NetError] = close(conn);
-            match parse_response(resp_bytes) {
-              Err(e) => Err(e),
-              Ok(resp) => {
-                // find_blank_line uses ![Mem] to scan the raw bytes and
-                // returns the index of the first body byte (after \r\n\r\n).
-                let body_start: Int = find_blank_line(resp_bytes);
-                let body: ByteArray = match find_content_length(resp.headers) {
-                  None => resp.body,
-                  Some(content_len) => match byte_array_slice_opt(resp_bytes, body_start, body_start + content_len) {
-                    None => resp.body,
-                    Some(b) => b,
-                  },
-                };
-                Ok(Response {
-                  status: resp.status,
-                  reason: resp.reason,
-                  headers: resp.headers,
-                  body: body,
-                })
-              },
-            }
+            parse_response(resp_bytes)
           },
         },
       }
