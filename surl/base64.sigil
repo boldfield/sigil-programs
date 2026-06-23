@@ -23,12 +23,11 @@ fn encode_chunk(b1: Byte, b2: Byte, b3: Byte) -> String ![] {
   let b1_int: Int = byte_to_int(b1);
   let b2_int: Int = byte_to_int(b2);
   let b3_int: Int = byte_to_int(b3);
-  let value: Int = b1_int * 65536 + b2_int * 256 + b3_int;
 
-  let c1: Int = value / 262144;
-  let c2: Int = (value / 4096) % 64;
-  let c3: Int = (value / 64) % 64;
-  let c4: Int = value % 64;
+  let c1: Int = b1_int / 4;
+  let c2: Int = ((b1_int % 4) * 16) + (b2_int / 16);
+  let c3: Int = ((b2_int % 16) * 4) + (b3_int / 64);
+  let c4: Int = b3_int % 64;
 
   string_concat(string_concat(string_concat(char_to_string(base64_char(c1)), char_to_string(base64_char(c2))), char_to_string(base64_char(c3))), char_to_string(base64_char(c4)))
 }
@@ -36,21 +35,19 @@ fn encode_chunk(b1: Byte, b2: Byte, b3: Byte) -> String ![] {
 fn encode_two_bytes(b1: Byte, b2: Byte) -> String ![] {
   let b1_int: Int = byte_to_int(b1);
   let b2_int: Int = byte_to_int(b2);
-  let value: Int = b1_int * 65536 + b2_int * 256;
 
-  let c1: Int = value / 262144;
-  let c2: Int = (value / 4096) % 64;
-  let c3: Int = (value / 64) % 64;
+  let c1: Int = b1_int / 4;
+  let c2: Int = ((b1_int % 4) * 16) + (b2_int / 16);
+  let c3: Int = (b2_int % 16) * 4;
 
   string_concat(string_concat(string_concat(char_to_string(base64_char(c1)), char_to_string(base64_char(c2))), char_to_string(base64_char(c3))), "=")
 }
 
 fn encode_one_byte(b1: Byte) -> String ![] {
   let b1_int: Int = byte_to_int(b1);
-  let value: Int = b1_int * 65536;
 
-  let c1: Int = value / 262144;
-  let c2: Int = (value / 4096) % 64;
+  let c1: Int = b1_int / 4;
+  let c2: Int = (b1_int % 4) * 16;
 
   string_concat(string_concat(char_to_string(base64_char(c1)), char_to_string(base64_char(c2))), "==")
 }
