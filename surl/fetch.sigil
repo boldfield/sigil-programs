@@ -14,7 +14,7 @@ import std.mem
 import std.net
 import std.ordering
 import std.result
-use std.byte_array.{byte_array_get_opt, byte_array_slice_opt};
+use std.byte_array.{byte_array_get_opt, byte_array_slice_opt, byte_to_int};
 use std.http.{Request, Response, parse_response, serialize_request};
 use std.mem.{Mem};
 use std.net.{Closed, Conn, ConnectionRefused, NetError, Other, ResolveFailed, TlsError, close, connect, recv_all, send};
@@ -40,6 +40,27 @@ fn byte_len(data: ByteArray, pos: Int) -> Int ![] {
   match byte_array_get_opt(data, pos) {
     None => pos,
     Some(_) => byte_len(data, pos + 1),
+  }
+}
+
+// Scan for \r\n\r\n (CR=13, LF=10) and return the position of the first
+// byte AFTER the sequence (i.e. the start of the HTTP body). If the
+// sequence is not found, returns the end-of-array position so that
+// a subsequent byte_array_slice_opt call produces None.
+fn find_body_start(bytes: ByteArray, pos: Int) -> Int ![] {
+  match (byte_array_get_opt(bytes, pos), byte_array_get_opt(bytes, pos + 1)) {
+    (None, _) => pos,
+    (Some(a), Some(b)) => match (byte_to_int(a), byte_to_int(b)) {
+      (13, 10) => match (byte_array_get_opt(bytes, pos + 2), byte_array_get_opt(bytes, pos + 3)) {
+        (Some(c), Some(d)) => match (byte_to_int(c), byte_to_int(d)) {
+          (13, 10) => pos + 4,
+          _ => find_body_start(bytes, pos + 1),
+        },
+        _ => find_body_start(bytes, pos + 1),
+      },
+      _ => find_body_start(bytes, pos + 1),
+    },
+    _ => find_body_start(bytes, pos + 1),
   }
 }
 
@@ -89,7 +110,23 @@ fn fetch(req: Request) -> Result[Response, String] ![Net, Mem] {
           },
           Ok(resp_bytes) => {
             let _: Result[Unit, NetError] = close(conn);
-            parse_response(resp_bytes)
+            // parse_response may return an empty body for some servers
+            // (e.g. python3 -m http.server / HTTP 1.0). Extract the body
+            // directly from the raw bytes so we always populate it.
+            let body_start: Int = find_body_start(resp_bytes, 0);
+            let total: Int = byte_len(resp_bytes, 0);
+            match parse_response(resp_bytes) {
+              Err(e) => Err(e),
+              Ok(resp) => match byte_array_slice_opt(resp_bytes, body_start, total) {
+                None => Ok(resp),
+                Some(body) => Ok(Response {
+                  status: resp.status,
+                  reason: resp.reason,
+                  headers: resp.headers,
+                  body: body,
+                }),
+              },
+            }
           },
         },
       }
