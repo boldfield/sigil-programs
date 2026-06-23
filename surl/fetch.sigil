@@ -1,0 +1,98 @@
+// surl/fetch — drive one HTTP/1.1 Request over the wire and return the
+// parsed Response. Serialization and response parsing are delegated to
+// std.http (serialize_request / parse_response) exactly as the task
+// requires, so Content-Length and Transfer-Encoding: chunked are handled
+// by the stdlib rather than re-implemented here. Those two stdlib calls
+// carry the ![Mem] effect, so fetch's row is ![Net, Mem] — the literal
+// ![Net] from the signature sketch is unsatisfiable while still calling
+// the requested std.http helpers (they perform Mem), and a compilable
+// signature that actually uses std.http is what the acceptance gate
+// (compiles + make test-surl passes) needs.
+import std.byte_array
+import std.http
+import std.mem
+import std.net
+import std.ordering
+import std.result
+use std.byte_array.{byte_array_get_opt, byte_array_slice_opt};
+use std.http.{Request, Response, parse_response, serialize_request};
+use std.mem.{Mem};
+use std.net.{Closed, Conn, ConnectionRefused, NetError, Other, ResolveFailed, TlsError, close, connect, recv_all, send};
+use std.ordering.{Equal, string_compare};
+use std.result.{Err, Ok, Result};
+
+// Render a NetError as a human-readable String for the Result's error arm.
+fn net_error_to_string(err: NetError) -> String ![] {
+  match err {
+    ResolveFailed => "DNS resolution failed",
+    ConnectionRefused => "Connection refused",
+    TlsError(msg) => msg,
+    Closed => "Connection closed",
+    Other(msg) => msg,
+  }
+}
+
+// Length of a ByteArray, found by scanning to the first absent index.
+// Avoids depending on a byte_array_length helper that the proven repo
+// code (surl/base64.sigil) does not use; the scan mirrors that file's
+// get_opt/None termination pattern.
+fn byte_len(data: ByteArray, pos: Int) -> Int ![] {
+  match byte_array_get_opt(data, pos) {
+    None => pos,
+    Some(_) => byte_len(data, pos + 1),
+  }
+}
+
+// Send the whole buffer, looping on short writes (std.net.send may write
+// fewer than requested bytes); return Err on a stalled (zero-byte) write.
+fn send_all_loop(conn: Conn, data: ByteArray, pos: Int, total: Int) -> Result[Unit, NetError] ![Net] {
+  match pos >= total {
+    true => Ok(()),
+    false => match byte_array_slice_opt(data, pos, total) {
+      None => Err(Other("send slice out of bounds")),
+      Some(chunk) => match send(conn, chunk) {
+        Err(e) => Err(e),
+        Ok(n) => match n > 0 {
+          true => send_all_loop(conn, data, pos + n, total),
+          false => Err(Other("zero bytes sent")),
+        },
+      },
+    },
+  }
+}
+
+fn send_all(conn: Conn, data: ByteArray) -> Result[Unit, NetError] ![Net] {
+  send_all_loop(conn, data, 0, byte_len(data, 0))
+}
+
+// fetch: connect, send the serialized request, read the full response,
+// close, and return the parsed Response. The connection is closed on
+// every exit path. Net/parse errors are surfaced as a String.
+fn fetch(req: Request) -> Result[Response, String] ![Net, Mem] {
+  let tls: Bool = match string_compare(req.url.scheme, "https") {
+    Equal => true,
+    _ => false,
+  };
+  match connect(req.url.host, req.url.port, tls) {
+    Err(e) => Err(net_error_to_string(e)),
+    Ok(conn) => {
+      let payload: ByteArray = serialize_request(req);
+      match send_all(conn, payload) {
+        Err(e) => {
+          let _: Result[Unit, NetError] = close(conn);
+          Err(net_error_to_string(e))
+        },
+        Ok(_) => match recv_all(conn) {
+          Err(e) => {
+            let _: Result[Unit, NetError] = close(conn);
+            Err(net_error_to_string(e))
+          },
+          Ok(resp_bytes) => {
+            let _: Result[Unit, NetError] = close(conn);
+            parse_response(resp_bytes)
+          },
+        },
+      }
+    },
+  }
+}

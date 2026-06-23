@@ -1,0 +1,47 @@
+// Serverless driver for surl/fetch: point fetch at a port nothing is
+// listening on (127.0.0.1:1) so connect is refused deterministically,
+// and assert fetch surfaces that as an Err. No server, no flakiness.
+import std.byte_array
+import std.http
+import std.io
+import std.list
+import std.mem
+import std.net
+import std.result
+import std.string
+import std.url
+import fetch
+use std.byte_array.{string_to_bytes};
+use std.http.{Request};
+use std.io.{IO};
+use std.list.{Nil};
+use std.mem.{Mem};
+use std.result.{Err, Ok};
+use std.string.{string_concat};
+use std.url.{Url};
+
+fn main() -> Int ![IO, Net, Mem] {
+  let url: Url = Url {
+    scheme: "http",
+    host: "127.0.0.1",
+    port: 1,
+    path: "/",
+    query: "",
+  };
+  let req: Request = Request {
+    method: "GET",
+    url: url,
+    headers: Nil,
+    body: string_to_bytes(""),
+  };
+  match fetch.fetch(req) {
+    Ok(_) => {
+      perform IO.println("FAIL: expected Err connecting to refused port");
+      1
+    },
+    Err(msg) => {
+      perform IO.println(string_concat("PASS: refused connect returned Err: ", msg));
+      0
+    },
+  }
+}
