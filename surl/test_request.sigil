@@ -1,0 +1,43 @@
+import std.io
+import std.list
+import std.string
+import args
+import request
+
+use std.io.{IO};
+use std.list.{Cons, List, Nil};
+use std.string.{string_concat};
+use args.{Config};
+use request.{build_request};
+
+fn main() -> Int ![IO] {
+  let config: Config = Config {
+    url: "http://example.com/path",
+    method: "GET",
+    headers: Nil,
+    data: "",
+    output: "",
+    head_only: false,
+    follow: false,
+    user: "",
+    cookie: "",
+    cookie_jar: "",
+    verbose: false,
+    insecure: false,
+  };
+
+  match build_request(config) {
+    Ok(req) => {
+      perform IO.println("Request built successfully:");
+      perform IO.println(string_concat("  method: ", req.method));
+      perform IO.println(string_concat("  url.host: ", req.url.host));
+      perform IO.println(string_concat("  url.scheme: ", req.url.scheme));
+      perform IO.println(string_concat("  url.path: ", req.url.path));
+      0
+    },
+    Err(msg) => {
+      perform IO.println(string_concat("Error building request: ", msg));
+      1
+    },
+  }
+}
