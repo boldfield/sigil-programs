@@ -27,7 +27,7 @@ if [ -z "$port" ]; then
 fi
 
 # Fetch with surl
-surl_response=$(bin/surl "http://127.0.0.1:$port/test.txt")
+surl_response=$(bin/main "http://127.0.0.1:$port/test.txt")
 
 # Fetch with curl for comparison
 curl_response=$(curl -s "http://127.0.0.1:$port/test.txt")
