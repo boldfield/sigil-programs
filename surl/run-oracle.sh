@@ -3,7 +3,7 @@ set -e
 
 # Create a temp directory with a test file
 tmpdir=$(mktemp -d)
-trap "rm -rf $tmpdir; kill $server_pid 2>/dev/null || true" EXIT
+trap 'rm -rf $tmpdir; kill $server_pid 2>/dev/null || true' EXIT
 
 echo "test content" > "$tmpdir/test.txt"
 
