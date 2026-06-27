@@ -45,18 +45,12 @@ fn find_method(argv: List[String]) -> String ![] {
 
 fn skip_flag_args_acc(argv: List[String], acc: List[String]) -> List[String] ![] {
   match argv {
-    Nil => {
-      let reversed: List[String] = reverse_list_acc(acc, Nil);
-      reversed
-    },
+    Nil => reverse_list_acc(acc, Nil),
     Cons(arg, rest) => {
       match string_compare(arg, "-X") {
         Equal => {
           match rest {
-            Nil => {
-              let reversed: List[String] = reverse_list_acc(acc, Nil);
-              reversed
-            },
+            Nil => reverse_list_acc(acc, Nil),
             Cons(_, rest2) => skip_flag_args_acc(rest2, acc),
           }
         },
