@@ -6,15 +6,29 @@ import args
 
 use std.http.{Request, Header};
 use std.url.{parse_url};
-use std.list.{Cons, Nil};
+use std.list.{Cons, Nil, append};
 use std.byte_array.{byte_array_empty};
 use args.{Config};
+
+fn tuple_to_header(t: (String, String)) -> Header ![] {
+  match t {
+    (key, value) => Header { name: key, value: value },
+  }
+}
+
+fn headers_from_tuples(tuples: List[(String, String)]) -> List[Header] ![] {
+  match tuples {
+    Nil => Nil,
+    Cons(h, t) => Cons(tuple_to_header(h), headers_from_tuples(t)),
+  }
+}
 
 fn build_request(c: Config) -> Result[Request, String] ![] {
   match parse_url(c.url) {
     Ok(url_obj) => {
       let host_header: Header = Header { name: "Host", value: url_obj.host };
-      let headers: List[Header] = Cons(host_header, Nil);
+      let custom_headers: List[Header] = headers_from_tuples(c.headers);
+      let headers: List[Header] = append(Cons(host_header, Nil), custom_headers);
       let req: Request = Request {
         method: c.method,
         url: url_obj,

@@ -4,7 +4,7 @@ import std.string
 import std.option
 use std.list.{Cons, List, Nil};
 use std.result.{Err, Ok, Result};
-use std.string.{string_compare};
+use std.string.{string_compare, string_split, string_concat};
 use std.option.{None, Option, Some};
 
 type Config = {
@@ -54,7 +54,17 @@ fn skip_flag_args_acc(argv: List[String], acc: List[String]) -> List[String] ![]
             Cons(_, rest2) => skip_flag_args_acc(rest2, acc),
           }
         },
-        _ => skip_flag_args_acc(rest, Cons(arg, acc)),
+        _ => {
+          match string_compare(arg, "-H") {
+            Equal => {
+              match rest {
+                Nil => reverse_list_acc(acc, Nil),
+                Cons(_, rest2) => skip_flag_args_acc(rest2, acc),
+              }
+            },
+            _ => skip_flag_args_acc(rest, Cons(arg, acc)),
+          }
+        },
       }
     },
   }
@@ -71,6 +81,49 @@ fn skip_flag_args(argv: List[String]) -> List[String] ![] {
   skip_flag_args_acc(argv, Nil)
 }
 
+fn rejoin_with_sep(parts: List[String], sep: String) -> String ![] {
+  match parts {
+    Nil => "",
+    Cons(h, t) => {
+      match t {
+        Nil => h,
+        _ => string_concat(h, string_concat(sep, rejoin_with_sep(t, sep))),
+      }
+    },
+  }
+}
+
+fn split_on_first(s: String, sep: String) -> Result[(String, String), String] ![] {
+  let parts: List[String] = string_split(s, sep);
+  match parts {
+    Nil => Err("empty string"),
+    Cons(key, Nil) => Err("separator not found"),
+    Cons(key, rest) => Ok((key, rejoin_with_sep(rest, sep))),
+  }
+}
+
+fn find_headers(argv: List[String]) -> List[(String, String)] ![] {
+  match argv {
+    Nil => Nil,
+    Cons(arg, rest) => {
+      match string_compare(arg, "-H") {
+        Equal => {
+          match rest {
+            Nil => find_headers(rest),
+            Cons(header_str, rest2) => {
+              match split_on_first(header_str, ": ") {
+                Ok(header) => Cons(header, find_headers(rest2)),
+                Err(_) => find_headers(rest2),
+              }
+            },
+          }
+        },
+        _ => find_headers(rest),
+      }
+    },
+  }
+}
+
 fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
   let clean_argv: List[String] = skip_flag_args(argv);
   match clean_argv {
@@ -78,10 +131,11 @@ fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
     Cons(_, Nil) => Err(usage()),
     Cons(_, Cons(url, _)) => {
       let method: String = find_method(argv);
+      let headers: List[(String, String)] = find_headers(argv);
       Ok(Config {
         url: url,
         method: method,
-        headers: Nil,
+        headers: headers,
         data: "",
         output: "",
         head_only: false,

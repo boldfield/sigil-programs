@@ -55,6 +55,19 @@ else
   exit 1
 fi
 
+# Test -H header
+surl_header=$(bin/main -H "X-Custom: test-value" "http://127.0.0.1:$port/headers" 2>&1 | grep -i "x-custom" || true)
+curl_header=$(curl -s -H "X-Custom: test-value" "http://127.0.0.1:$port/headers" 2>&1 | grep -i "x-custom" || true)
+
+if [ "$surl_header" = "$curl_header" ]; then
+  echo "✓ surl -H header matches curl"
+else
+  echo "✗ surl -H header does not match curl"
+  echo "  surl: '$surl_header'"
+  echo "  curl: '$curl_header'"
+  exit 1
+fi
+
 # Stop the server with SIGTERM
 kill -TERM $server_pid 2>/dev/null || true
 
