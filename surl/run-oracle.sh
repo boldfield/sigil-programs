@@ -42,6 +42,19 @@ else
   exit 1
 fi
 
+# Test -X POST (POST to /test.txt returns same content as GET)
+surl_post=$(bin/main -X POST "http://127.0.0.1:$port/test.txt" 2>&1)
+curl_post=$(curl -s -X POST "http://127.0.0.1:$port/test.txt" 2>&1)
+
+if [ "$surl_post" = "$curl_post" ]; then
+  echo "✓ surl -X POST matches curl"
+else
+  echo "✗ surl -X POST does not match curl"
+  echo "  surl: '$surl_post'"
+  echo "  curl: '$curl_post'"
+  exit 1
+fi
+
 # Stop the server with SIGTERM
 kill -TERM $server_pid 2>/dev/null || true
 

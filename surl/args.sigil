@@ -1,7 +1,11 @@
 import std.list
 import std.result
+import std.string
+import std.option
 use std.list.{Cons, List, Nil};
 use std.result.{Err, Ok, Result};
+use std.string.{string_compare};
+use std.option.{None, Option, Some};
 
 type Config = {
   url: String,
@@ -22,14 +26,67 @@ fn usage() -> String ![] {
   "usage: surl [options] <url>"
 }
 
-fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
+fn find_method(argv: List[String]) -> String ![] {
   match argv {
+    Nil => "GET",
+    Cons(arg, rest) => {
+      match string_compare(arg, "-X") {
+        Equal => {
+          match rest {
+            Nil => "GET",
+            Cons(method, _) => method,
+          }
+        },
+        _ => find_method(rest),
+      }
+    },
+  }
+}
+
+fn skip_flag_args_acc(argv: List[String], acc: List[String]) -> List[String] ![] {
+  match argv {
+    Nil => {
+      let reversed: List[String] = reverse_list_acc(acc, Nil);
+      reversed
+    },
+    Cons(arg, rest) => {
+      match string_compare(arg, "-X") {
+        Equal => {
+          match rest {
+            Nil => {
+              let reversed: List[String] = reverse_list_acc(acc, Nil);
+              reversed
+            },
+            Cons(_, rest2) => skip_flag_args_acc(rest2, acc),
+          }
+        },
+        _ => skip_flag_args_acc(rest, Cons(arg, acc)),
+      }
+    },
+  }
+}
+
+fn reverse_list_acc(lst: List[String], acc: List[String]) -> List[String] ![] {
+  match lst {
+    Nil => acc,
+    Cons(h, t) => reverse_list_acc(t, Cons(h, acc)),
+  }
+}
+
+fn skip_flag_args(argv: List[String]) -> List[String] ![] {
+  skip_flag_args_acc(argv, Nil)
+}
+
+fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
+  let clean_argv: List[String] = skip_flag_args(argv);
+  match clean_argv {
     Nil => Err(usage()),
     Cons(_, Nil) => Err(usage()),
     Cons(_, Cons(url, _)) => {
+      let method: String = find_method(argv);
       Ok(Config {
         url: url,
-        method: "GET",
+        method: method,
         headers: Nil,
         data: "",
         output: "",

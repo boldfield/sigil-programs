@@ -16,7 +16,7 @@ fn build_request(c: Config) -> Result[Request, String] ![] {
       let host_header: Header = Header { name: "Host", value: url_obj.host };
       let headers: List[Header] = Cons(host_header, Nil);
       let req: Request = Request {
-        method: "GET",
+        method: c.method,
         url: url_obj,
         headers: headers,
         body: byte_array_empty(),
