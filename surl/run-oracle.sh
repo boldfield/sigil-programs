@@ -3,7 +3,7 @@ set -e
 
 # Create a temp directory with a test file
 tmpdir=$(mktemp -d)
-trap "rm -rf $tmpdir; kill $server_pid 2>/dev/null || true" EXIT
+trap 'rm -rf $tmpdir; kill $server_pid 2>/dev/null || true' EXIT
 
 echo "test content" > "$tmpdir/test.txt"
 
@@ -26,14 +26,19 @@ if [ -z "$port" ]; then
   exit 1
 fi
 
-# Test: fetch the file from the server
-response=$(curl -s "http://127.0.0.1:$port/test.txt")
+# Fetch with surl
+surl_response=$(bin/main "http://127.0.0.1:$port/test.txt")
 
-# Verify the content
-if [ "$response" = "test content" ]; then
-  echo "✓ fixture server works"
+# Fetch with curl for comparison
+curl_response=$(curl -s "http://127.0.0.1:$port/test.txt")
+
+# Compare responses
+if [ "$surl_response" = "$curl_response" ]; then
+  echo "✓ surl GET body matches curl"
 else
-  echo "✗ fixture server returned wrong content: $response"
+  echo "✗ surl GET body does not match curl"
+  echo "  surl: '$surl_response'"
+  echo "  curl: '$curl_response'"
   exit 1
 fi
 
@@ -46,7 +51,6 @@ timeout_pid=$!
 
 if wait $server_pid 2>/dev/null; then
   kill -9 $timeout_pid 2>/dev/null || true
-  echo "✓ fixture server stopped cleanly"
 else
   # Server didn't exit cleanly
   kill -9 $server_pid 2>/dev/null || true
