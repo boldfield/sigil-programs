@@ -15,7 +15,7 @@ import std.net
 import std.ordering
 import std.result
 import std.string
-use std.byte_array.{byte_array_get_opt, byte_array_slice_opt, string_from_bytes};
+use std.byte_array.{byte_array_get_opt, byte_array_slice_opt, string_from_bytes, byte_to_int};
 use std.http.{Request, Response, parse_response, serialize_request};
 use std.mem.{Mem};
 use std.net.{Closed, Conn, ConnectionRefused, NetError, Other, ResolveFailed, TlsError, close, connect, recv_all, send};
@@ -95,13 +95,13 @@ fn find_status_line_end(data: ByteArray, pos: Int) -> Int ![] {
   match byte_array_get_opt(data, pos) {
     None => -1,
     Some(b) => {
-      match b {
+      match byte_to_int(b) {
         10 => pos,
         13 => {
           match byte_array_get_opt(data, pos + 1) {
             None => pos,
             Some(next_b) => {
-              match next_b {
+              match byte_to_int(next_b) {
                 10 => pos,
                 _ => find_status_line_end(data, pos + 1),
               }
