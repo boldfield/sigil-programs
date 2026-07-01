@@ -123,6 +123,29 @@ else
   exit 1
 fi
 
+# Test -o (write body to file; no stdout output)
+bin/main -o "$tmpdir/surl_o.out" "http://127.0.0.1:$port/test.txt" > "$tmpdir/surl_o_stdout.txt" 2>&1
+curl -s -o "$tmpdir/curl_o.out" "http://127.0.0.1:$port/test.txt"
+
+# Check file contents match
+if cmp -s "$tmpdir/surl_o.out" "$tmpdir/curl_o.out"; then
+  echo "✓ surl -o file contents match curl (byte-for-byte)"
+else
+  echo "✗ surl -o file contents do not match curl"
+  echo "  surl:  '$(cat "$tmpdir/surl_o.out")'"
+  echo "  curl:  '$(cat "$tmpdir/curl_o.out")'"
+  exit 1
+fi
+
+# Check stdout is empty (nothing should be printed)
+if [ ! -s "$tmpdir/surl_o_stdout.txt" ]; then
+  echo "✓ surl -o produces no stdout output"
+else
+  echo "✗ surl -o printed to stdout when it should not have"
+  echo "  stdout: '$(cat "$tmpdir/surl_o_stdout.txt")'"
+  exit 1
+fi
+
 # Stop the server with SIGTERM
 kill -TERM $server_pid 2>/dev/null || true
 
