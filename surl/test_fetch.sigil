@@ -34,7 +34,7 @@ fn main() -> Int ![IO, Net, Mem] {
     headers: Nil,
     body: string_to_bytes(""),
   };
-  match fetch.fetch(req) {
+  match fetch.fetch(req, false) {
     Ok(_) => {
       perform IO.println("FAIL: expected Err connecting to refused port");
       1

@@ -99,7 +99,12 @@ fn skip_flag_args_acc(argv: List[String], acc: List[String]) -> List[String] ![]
                     Cons(_, rest2) => skip_flag_args_acc(rest2, acc),
                   }
                 },
-                _ => skip_flag_args_acc(rest, Cons(arg, acc)),
+                _ => {
+                  match string_compare(arg, "-I") {
+                    Equal => skip_flag_args_acc(rest, acc),
+                    _ => skip_flag_args_acc(rest, Cons(arg, acc)),
+                  }
+                },
               }
             },
           }
@@ -170,12 +175,16 @@ fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
     Cons(_, Nil) => Err(usage()),
     Cons(_, Cons(url, _)) => {
       let data: String = find_data(argv);
-      // -d implies POST unless the method was set explicitly with -X.
+      let head_only: Bool = has_flag(argv, "-I");
+      // -I implies HEAD; -d implies POST; -X overrides all.
       let method: String = match has_flag(argv, "-X") {
         true => find_method(argv),
-        false => match has_flag(argv, "-d") {
-          true => "POST",
-          false => "GET",
+        false => match head_only {
+          true => "HEAD",
+          false => match has_flag(argv, "-d") {
+            true => "POST",
+            false => "GET",
+          },
         },
       };
       let headers: List[(String, String)] = find_headers(argv);
@@ -185,7 +194,7 @@ fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
         headers: headers,
         data: data,
         output: "",
-        head_only: false,
+        head_only: head_only,
         follow: false,
         user: "",
         cookie: "",
