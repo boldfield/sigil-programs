@@ -88,9 +88,9 @@ fn main() -> Int ![IO, Env, Net, Mem, Fs] {
                         },
                         _ => {
                           match perform Fs.write_file(config.output, body_str) {
-                            Ok(()) => 0,
-                            Err(_) => {
-                              perform IO.println("Error: failed to write to file");
+                            (0, _) => 0,
+                            (_, error_msg) => {
+                              perform IO.println(string_concat("Error: ", error_msg));
                               1
                             },
                           }
