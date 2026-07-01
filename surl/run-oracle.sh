@@ -68,6 +68,20 @@ else
   exit 1
 fi
 
+# Test -d data (POST with body)
+test_data="hello world"
+surl_post_data=$(bin/main -d "$test_data" "http://127.0.0.1:$port/echo" 2>&1)
+curl_post_data=$(curl -s -d "$test_data" "http://127.0.0.1:$port/echo" 2>&1)
+
+if [ "$surl_post_data" = "$curl_post_data" ]; then
+  echo "✓ surl -d data matches curl"
+else
+  echo "✗ surl -d data does not match curl"
+  echo "  surl: '$surl_post_data'"
+  echo "  curl: '$curl_post_data'"
+  exit 1
+fi
+
 # Stop the server with SIGTERM
 kill -TERM $server_pid 2>/dev/null || true
 
