@@ -2,10 +2,11 @@ import std.env
 import std.http
 import std.int
 import std.io
+import std.fs as fsmod
 import std.byte_array
 import std.list
 import std.mem
-import std.net
+import std.net as netmod
 import std.string
 import args
 import request
@@ -15,14 +16,15 @@ use std.env.{env_args, Env};
 use std.http.{Header, Response};
 use std.int.{int_to_string};
 use std.io.{IO};
+use fsmod.{Fs};
 use std.byte_array.{string_from_bytes};
 use std.list.{Cons, List, Nil};
 use std.mem.{Mem};
-use std.net.{Net};
-use std.string.{string_concat};
+use netmod.{Net};
+use std.string.{string_concat, string_compare};
 use args.{parse_args};
 use request.{build_request};
-use fetch.{fetch};
+use fetch.{fetch, write_body_to_file};
 
 fn print_headers(headers: List[Header]) -> Unit ![IO] {
   match headers {
@@ -34,7 +36,7 @@ fn print_headers(headers: List[Header]) -> Unit ![IO] {
   }
 }
 
-fn main() -> Int ![IO, Env, Net, Mem] {
+fn main() -> Int ![IO, Env, Net, Mem, Fs] {
   let argv: List[String] = env_args();
   match parse_args(argv) {
     Err(usage_msg) => {
@@ -68,26 +70,32 @@ fn main() -> Int ![IO, Env, Net, Mem] {
                       1
                     },
                     Some(body_str) => {
-                      // Emit the response body and terminate the line.
-                      //
-                      // std.io only exposes `print`/`println`, and on the pinned
-                      // toolchain `print` is line-buffered with NO flush at process
-                      // exit: a body that does not end in "\n" (e.g. the `-d` /echo
-                      // echo of "hello world") is left in the buffer and lost,
-                      // printing nothing. `println` flushes (the newline triggers
-                      // it), so it is the only reliable way to emit the body here.
-                      //
-                      // Writing raw bytes to stdout to match curl exactly (no added
-                      // "\n") is not reachable: std.io has no unbuffered/flush op,
-                      // and the one byte-exact route — std.fs.write_file to
-                      // /dev/stdout — cannot be imported, because std.fs's
-                      // `FsError.Other` collides with std.net's `NetError.Other`
-                      // (E0118) and surl needs std.net for the transport. So surl
-                      // line-terminates its output like sjq and every other program
-                      // in this repo. The oracle accounts for this single trailing
-                      // newline with a byte-exact comparison.
-                      perform IO.println(body_str);
-                      0
+                      match string_compare(config.output, "") {
+                        Equal => {
+                          // Emit the response body to stdout and terminate the line.
+                          //
+                          // std.io only exposes `print`/`println`, and on the pinned
+                          // toolchain `print` is line-buffered with NO flush at process
+                          // exit: a body that does not end in "\n" (e.g. the `-d` /echo
+                          // echo of "hello world") is left in the buffer and lost,
+                          // printing nothing. `println` flushes (the newline triggers
+                          // it), so it is the only reliable way to emit the body here.
+                          // The oracle accounts for this single trailing newline with
+                          // a byte-exact comparison.
+                          perform IO.println(body_str);
+                          0
+                        },
+                        _ => {
+                          let result: Int = write_body_to_file(config.output, body_str);
+                          match result {
+                            0 => 0,
+                            _ => {
+                              perform IO.println("Error: could not write to file");
+                              1
+                            },
+                          }
+                        },
+                      }
                     },
                   }
                 },
