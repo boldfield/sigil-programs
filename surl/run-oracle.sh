@@ -94,6 +94,35 @@ else
   exit 1
 fi
 
+# Test -I (HEAD: compare status line and Content-type header value to curl)
+# Use tr -d '\r' to strip carriage returns from curl's CRLF-terminated output.
+surl_head=$(bin/main -I "http://127.0.0.1:$port/test.txt")
+curl_head=$(curl -sI "http://127.0.0.1:$port/test.txt" | tr -d '\r')
+
+surl_status=$(echo "$surl_head" | head -1)
+curl_status=$(echo "$curl_head" | head -1)
+
+if [ "$surl_status" = "$curl_status" ]; then
+  echo "✓ surl -I status line matches curl: $surl_status"
+else
+  echo "✗ surl -I status line does not match curl"
+  echo "  surl: '$surl_status'"
+  echo "  curl: '$curl_status'"
+  exit 1
+fi
+
+surl_ct=$(echo "$surl_head" | grep -i "^Content-type:" | head -1 | cut -d: -f2- | sed 's/^ *//')
+curl_ct=$(echo "$curl_head" | grep -i "^Content-type:" | head -1 | cut -d: -f2- | sed 's/^ *//')
+
+if [ "$surl_ct" = "$curl_ct" ]; then
+  echo "✓ surl -I Content-type matches curl: $surl_ct"
+else
+  echo "✗ surl -I Content-type does not match curl"
+  echo "  surl: '$surl_ct'"
+  echo "  curl: '$curl_ct'"
+  exit 1
+fi
+
 # Stop the server with SIGTERM
 kill -TERM $server_pid 2>/dev/null || true
 
