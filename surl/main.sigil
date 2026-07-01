@@ -48,7 +48,7 @@ fn main() -> Int ![IO, Env, Net, Mem] {
           1
         },
         Ok(req) => {
-          match fetch(req) {
+          match fetch(req, config.head_only) {
             Err(err_msg) => {
               perform IO.println(err_msg);
               1
