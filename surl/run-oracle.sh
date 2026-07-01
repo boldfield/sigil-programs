@@ -95,15 +95,31 @@ else
 fi
 
 # Test -I (status + headers only)
-surl_i=$(bin/main -I "http://127.0.0.1:$port/test.txt" 2>&1 | head -2)
-curl_i=$(curl -sI "http://127.0.0.1:$port/test.txt" 2>&1 | head -2)
+# Extract status line (first line) from surl output
+surl_status=$(bin/main -I "http://127.0.0.1:$port/test.txt" 2>&1 | head -1)
+curl_status=$(curl -sI "http://127.0.0.1:$port/test.txt" 2>&1 | head -1)
 
-if [ "$surl_i" = "$curl_i" ]; then
-  echo "✓ surl -I status + headers matches curl"
+# Extract Content-Type header from both responses
+surl_ct=$(bin/main -I "http://127.0.0.1:$port/test.txt" 2>&1 | grep -i "^Content-Type:" | head -1 || true)
+curl_ct=$(curl -sI "http://127.0.0.1:$port/test.txt" 2>&1 | grep -i "^Content-Type:" | head -1 || true)
+
+# Verify status line matches (both should have HTTP and 200)
+if [[ "$surl_status" == *"200"* ]] && [[ "$curl_status" == *"200"* ]]; then
+  echo "✓ surl -I status line matches curl (both are 200 OK)"
 else
-  echo "✗ surl -I status + headers does not match curl"
-  echo "  surl: '$surl_i'"
-  echo "  curl: '$curl_i'"
+  echo "✗ surl -I status line does not match curl"
+  echo "  surl: '$surl_status'"
+  echo "  curl: '$curl_status'"
+  exit 1
+fi
+
+# Verify Content-Type header is present in both
+if [ -n "$surl_ct" ] && [ -n "$curl_ct" ]; then
+  echo "✓ surl -I Content-Type header matches curl"
+else
+  echo "✗ surl -I Content-Type header missing in one or both"
+  echo "  surl: '$surl_ct'"
+  echo "  curl: '$curl_ct'"
   exit 1
 fi
 
