@@ -14,12 +14,14 @@ import std.mem
 import std.net
 import std.ordering
 import std.result
-use std.byte_array.{byte_array_get_opt, byte_array_slice_opt};
+import std.string
+use std.byte_array.{byte_array_get_opt, byte_array_slice_opt, string_from_bytes, byte_to_int};
 use std.http.{Request, Response, parse_response, serialize_request};
 use std.mem.{Mem};
 use std.net.{Closed, Conn, ConnectionRefused, NetError, Other, ResolveFailed, TlsError, close, connect, recv_all, send};
 use std.ordering.{Equal, string_compare};
 use std.result.{Err, Ok, Result};
+use std.string.{string_split};
 
 // Render a NetError as a human-readable String for the Result's error arm.
 fn net_error_to_string(err: NetError) -> String ![] {
@@ -65,10 +67,66 @@ fn send_all(conn: Conn, data: ByteArray) -> Result[Unit, NetError] ![Net] {
   send_all_loop(conn, data, 0, byte_len(data, 0))
 }
 
+// Extract HTTP version from status line (e.g., "HTTP/1.0" from "HTTP/1.0 200 OK")
+fn extract_http_version(resp_bytes: ByteArray) -> String ![] {
+  match byte_array_get_opt(resp_bytes, 0) {
+    None => "HTTP/1.1",
+    Some(_) => {
+      match find_status_line_end(resp_bytes, 0) {
+        -1 => "HTTP/1.1",
+        end_pos => {
+          match byte_array_slice_opt(resp_bytes, 0, end_pos) {
+            None => "HTTP/1.1",
+            Some(status_bytes) => {
+              match string_from_bytes(status_bytes) {
+                None => "HTTP/1.1",
+                Some(status_str) => extract_version_from_status(status_str),
+              }
+            },
+          }
+        },
+      }
+    },
+  }
+}
+
+// Find the end of the status line (first \r\n or \n)
+fn find_status_line_end(data: ByteArray, pos: Int) -> Int ![] {
+  match byte_array_get_opt(data, pos) {
+    None => -1,
+    Some(b) => {
+      match byte_to_int(b) {
+        10 => pos,
+        13 => {
+          match byte_array_get_opt(data, pos + 1) {
+            None => pos,
+            Some(next_b) => {
+              match byte_to_int(next_b) {
+                10 => pos,
+                _ => find_status_line_end(data, pos + 1),
+              }
+            },
+          }
+        },
+        _ => find_status_line_end(data, pos + 1),
+      }
+    },
+  }
+}
+
+// Extract version from status line string like "HTTP/1.0 200 OK"
+fn extract_version_from_status(status: String) -> String ![] {
+  let parts: List[String] = string_split(status, " ");
+  match parts {
+    Nil => "HTTP/1.1",
+    Cons(version, _) => version,
+  }
+}
+
 // fetch: connect, send the serialized request, read the full response,
 // close, and return the parsed Response. The connection is closed on
 // every exit path. Net/parse errors are surfaced as a String.
-fn fetch(req: Request) -> Result[Response, String] ![Net, Mem] {
+fn fetch(req: Request) -> Result[(Response, String), String] ![Net, Mem] {
   let tls: Bool = match string_compare(req.url.scheme, "https") {
     Equal => true,
     _ => false,
@@ -89,7 +147,11 @@ fn fetch(req: Request) -> Result[Response, String] ![Net, Mem] {
           },
           Ok(resp_bytes) => {
             let _: Result[Unit, NetError] = close(conn);
-            parse_response(resp_bytes)
+            let version: String = extract_http_version(resp_bytes);
+            match parse_response(resp_bytes) {
+              Err(e) => Err(e),
+              Ok(resp) => Ok((resp, version)),
+            }
           },
         },
       }

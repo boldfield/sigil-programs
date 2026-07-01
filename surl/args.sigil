@@ -99,7 +99,12 @@ fn skip_flag_args_acc(argv: List[String], acc: List[String]) -> List[String] ![]
                     Cons(_, rest2) => skip_flag_args_acc(rest2, acc),
                   }
                 },
-                _ => skip_flag_args_acc(rest, Cons(arg, acc)),
+                _ => {
+                  match string_compare(arg, "-I") {
+                    Equal => skip_flag_args_acc(rest, acc),
+                    _ => skip_flag_args_acc(rest, Cons(arg, acc)),
+                  }
+                },
               }
             },
           }
@@ -185,7 +190,7 @@ fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
         headers: headers,
         data: data,
         output: "",
-        head_only: false,
+        head_only: has_flag(argv, "-I"),
         follow: false,
         user: "",
         cookie: "",
