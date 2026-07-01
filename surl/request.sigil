@@ -1,14 +1,10 @@
 import std.http
-import std.int
-import std.string
 import std.url
 import std.list
 import std.byte_array
 import args
 
 use std.http.{Request, Header};
-use std.int.{int_to_string};
-use std.string.{string_length};
 use std.url.{parse_url};
 use std.list.{Cons, Nil, append};
 use std.byte_array.{string_to_bytes};
@@ -32,12 +28,7 @@ fn build_request(c: Config) -> Result[Request, String] ![] {
     Ok(url_obj) => {
       let host_header: Header = Header { name: "Host", value: url_obj.host };
       let custom_headers: List[Header] = headers_from_tuples(c.headers);
-      let data_len: Int = string_length(c.data);
-      let base_headers: List[Header] = match data_len > 0 {
-        true => Cons(host_header, Cons(Header { name: "Content-Length", value: int_to_string(data_len) }, Nil)),
-        false => Cons(host_header, Nil),
-      };
-      let headers: List[Header] = append(base_headers, custom_headers);
+      let headers: List[Header] = append(Cons(host_header, Nil), custom_headers);
       let req: Request = Request {
         method: c.method,
         url: url_obj,
