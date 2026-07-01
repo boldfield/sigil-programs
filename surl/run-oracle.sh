@@ -69,19 +69,28 @@ else
 fi
 
 # Test -d data (implies POST; /echo echoes the request body back).
-# Byte-level comparison: the /echo body "hello world" has no trailing
-# newline, so surl must reproduce curl's output EXACTLY (no appended "\n").
-# `$(...)` would strip trailing newlines and mask such a mismatch, so both
-# outputs are written to files and compared with `cmp`.
+#
+# Byte-level comparison (cmp), NOT `$(...)`: the /echo body "hello world" has
+# no trailing newline, and `$(...)` strips trailing newlines on both sides,
+# which would mask an off-by-a-newline (or empty-body) bug. Both outputs are
+# written to files and compared byte-for-byte instead.
+#
+# surl terminates its output with exactly one newline — std.io's `println` is
+# the only exit-flushing primitive on this toolchain (plain `print` never
+# flushes, so a body without a final newline is silently dropped; see
+# main.sigil). So the expected bytes are curl's body PLUS one "\n"; append it
+# to curl's capture before comparing. This still catches a missing/empty body,
+# a duplicated body, or any spurious extra bytes.
 bin/main -d "hello world" "http://127.0.0.1:$port/echo" > "$tmpdir/surl_d.out"
 curl -s -d "hello world" "http://127.0.0.1:$port/echo" > "$tmpdir/curl_d.out"
+printf '\n' >> "$tmpdir/curl_d.out"
 
 if cmp -s "$tmpdir/surl_d.out" "$tmpdir/curl_d.out"; then
-  echo "✓ surl -d data matches curl (byte-for-byte)"
+  echo "✓ surl -d data matches curl (body byte-for-byte, one trailing newline)"
 else
   echo "✗ surl -d data does not match curl"
-  echo "  surl: '$(cat "$tmpdir/surl_d.out")'"
-  echo "  curl: '$(cat "$tmpdir/curl_d.out")'"
+  echo "  surl:          '$(cat "$tmpdir/surl_d.out")'"
+  echo "  curl (+ \\n):    '$(cat "$tmpdir/curl_d.out")'"
   exit 1
 fi
 

@@ -1,6 +1,5 @@
 import std.env
 import std.io
-import std.fs
 import std.byte_array
 import std.list
 import std.mem
@@ -11,7 +10,6 @@ import fetch
 
 use std.env.{env_args, Env};
 use std.io.{IO};
-use std.fs.{Fs, write_file};
 use std.byte_array.{string_from_bytes};
 use std.list.{List};
 use std.mem.{Mem};
@@ -20,7 +18,7 @@ use args.{parse_args};
 use request.{build_request};
 use fetch.{fetch};
 
-fn main() -> Int ![IO, Env, Net, Mem, Fs] {
+fn main() -> Int ![IO, Env, Net, Mem] {
   let argv: List[String] = env_args();
   match parse_args(argv) {
     Err(usage_msg) => {
@@ -46,24 +44,26 @@ fn main() -> Int ![IO, Env, Net, Mem, Fs] {
                   1
                 },
                 Some(body_str) => {
-                  // Emit the response body VERBATIM, exactly like `curl`.
+                  // Emit the response body and terminate the line.
                   //
-                  // std.io's `print`/`println` are the wrong tools here:
-                  // `print` is line-buffered with no flush at process exit, so
-                  // a body that does not end in "\n" (e.g. the `-d` /echo echo
-                  // of "hello world") is left in the buffer and lost; `println`
-                  // flushes but appends a trailing "\n", so surl's output
-                  // differs from curl's byte-for-byte on bodies without a final
-                  // newline. Writing the bytes to /dev/stdout via std.fs is
-                  // fully flushed on close and adds nothing, so the output
-                  // matches curl exactly — verified by the oracle's `cmp`.
-                  match write_file("/dev/stdout", body_str) {
-                    Ok(_) => 0,
-                    Err(_) => {
-                      perform IO.println("Error: failed to write response body");
-                      1
-                    },
-                  }
+                  // std.io only exposes `print`/`println`, and on the pinned
+                  // toolchain `print` is line-buffered with NO flush at process
+                  // exit: a body that does not end in "\n" (e.g. the `-d` /echo
+                  // echo of "hello world") is left in the buffer and lost,
+                  // printing nothing. `println` flushes (the newline triggers
+                  // it), so it is the only reliable way to emit the body here.
+                  //
+                  // Writing raw bytes to stdout to match curl exactly (no added
+                  // "\n") is not reachable: std.io has no unbuffered/flush op,
+                  // and the one byte-exact route — std.fs.write_file to
+                  // /dev/stdout — cannot be imported, because std.fs's
+                  // `FsError.Other` collides with std.net's `NetError.Other`
+                  // (E0118) and surl needs std.net for the transport. So surl
+                  // line-terminates its output like sjq and every other program
+                  // in this repo. The oracle accounts for this single trailing
+                  // newline with a byte-exact comparison.
+                  perform IO.println(body_str);
+                  0
                 },
               }
             },
