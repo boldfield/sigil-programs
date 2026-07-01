@@ -1,5 +1,4 @@
 import std.env
-import std.fs
 import std.http
 import std.int
 import std.io
@@ -11,9 +10,9 @@ import std.string
 import args
 import request
 import fetch
+import write
 
 use std.env.{env_args, Env};
-use std.fs.{Fs};
 use std.http.{Header, Response};
 use std.int.{int_to_string};
 use std.io.{IO};
@@ -26,6 +25,7 @@ use std.string.{string_concat, string_compare};
 use args.{parse_args};
 use request.{build_request};
 use fetch.{fetch};
+use write.{write_body_to_file};
 
 fn print_headers(headers: List[Header]) -> Unit ![IO] {
   match headers {
@@ -87,10 +87,11 @@ fn main() -> Int ![IO, Env, Net, Mem, Fs] {
                           0
                         },
                         _ => {
-                          match perform Fs.write_file(config.output, body_str) {
-                            (0, _) => 0,
-                            (_, error_msg) => {
-                              perform IO.println(string_concat("Error: ", error_msg));
+                          let result: Int = perform write_body_to_file(config.output, body_str);
+                          match result {
+                            0 => 0,
+                            _ => {
+                              perform IO.println("Error: could not write to file");
                               1
                             },
                           }

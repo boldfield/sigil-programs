@@ -1,0 +1,11 @@
+import std.fs
+import std.result
+use std.fs.{write_file, Fs};
+use std.result.{Err, Ok};
+
+fn write_body_to_file(path: String, body: String) -> Int ![Fs] {
+  match write_file(path, body) {
+    Ok(_) => 0,
+    Err(_) => 1,
+  }
+}
