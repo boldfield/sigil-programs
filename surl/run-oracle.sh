@@ -68,16 +68,20 @@ else
   exit 1
 fi
 
-# Test -d data (implies POST; /echo echoes the request body back)
-surl_data=$(bin/main -d "hello world" "http://127.0.0.1:$port/echo" 2>&1)
-curl_data=$(curl -s -d "hello world" "http://127.0.0.1:$port/echo" 2>&1)
+# Test -d data (implies POST; /echo echoes the request body back).
+# Byte-level comparison: the /echo body "hello world" has no trailing
+# newline, so surl must reproduce curl's output EXACTLY (no appended "\n").
+# `$(...)` would strip trailing newlines and mask such a mismatch, so both
+# outputs are written to files and compared with `cmp`.
+bin/main -d "hello world" "http://127.0.0.1:$port/echo" > "$tmpdir/surl_d.out"
+curl -s -d "hello world" "http://127.0.0.1:$port/echo" > "$tmpdir/curl_d.out"
 
-if [ "$surl_data" = "$curl_data" ]; then
-  echo "✓ surl -d data matches curl"
+if cmp -s "$tmpdir/surl_d.out" "$tmpdir/curl_d.out"; then
+  echo "✓ surl -d data matches curl (byte-for-byte)"
 else
   echo "✗ surl -d data does not match curl"
-  echo "  surl: '$surl_data'"
-  echo "  curl: '$curl_data'"
+  echo "  surl: '$(cat "$tmpdir/surl_d.out")'"
+  echo "  curl: '$(cat "$tmpdir/curl_d.out")'"
   exit 1
 fi
 
