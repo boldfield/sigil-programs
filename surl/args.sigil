@@ -62,7 +62,17 @@ fn skip_flag_args_acc(argv: List[String], acc: List[String]) -> List[String] ![]
                 Cons(_, rest2) => skip_flag_args_acc(rest2, acc),
               }
             },
-            _ => skip_flag_args_acc(rest, Cons(arg, acc)),
+            _ => {
+              match string_compare(arg, "-d") {
+                Equal => {
+                  match rest {
+                    Nil => reverse_list_acc(acc, Nil),
+                    Cons(_, rest2) => skip_flag_args_acc(rest2, acc),
+                  }
+                },
+                _ => skip_flag_args_acc(rest, Cons(arg, acc)),
+              }
+            },
           }
         },
       }
@@ -124,6 +134,23 @@ fn find_headers(argv: List[String]) -> List[(String, String)] ![] {
   }
 }
 
+fn find_data(argv: List[String]) -> String ![] {
+  match argv {
+    Nil => "",
+    Cons(arg, rest) => {
+      match string_compare(arg, "-d") {
+        Equal => {
+          match rest {
+            Nil => "",
+            Cons(data, _) => data,
+          }
+        },
+        _ => find_data(rest),
+      }
+    },
+  }
+}
+
 fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
   let clean_argv: List[String] = skip_flag_args(argv);
   match clean_argv {
@@ -132,11 +159,21 @@ fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
     Cons(_, Cons(url, _)) => {
       let method: String = find_method(argv);
       let headers: List[(String, String)] = find_headers(argv);
+      let data: String = find_data(argv);
+      let final_method: String = match string_compare(method, "GET") {
+        Equal => {
+          match string_compare(data, "") {
+            Equal => "GET",
+            _ => "POST",
+          }
+        },
+        _ => method,
+      };
       Ok(Config {
         url: url,
-        method: method,
+        method: final_method,
         headers: headers,
-        data: "",
+        data: data,
         output: "",
         head_only: false,
         follow: false,
