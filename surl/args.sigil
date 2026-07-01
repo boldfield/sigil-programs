@@ -185,7 +185,7 @@ fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
         headers: headers,
         data: data,
         output: "",
-        head_only: false,
+        head_only: has_flag(argv, "-I"),
         follow: false,
         user: "",
         cookie: "",

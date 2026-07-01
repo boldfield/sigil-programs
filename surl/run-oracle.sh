@@ -94,6 +94,19 @@ else
   exit 1
 fi
 
+# Test -I (status + headers only)
+surl_i=$(bin/main -I "http://127.0.0.1:$port/test.txt" 2>&1 | head -2)
+curl_i=$(curl -sI "http://127.0.0.1:$port/test.txt" 2>&1 | head -2)
+
+if [ "$surl_i" = "$curl_i" ]; then
+  echo "✓ surl -I status + headers matches curl"
+else
+  echo "✗ surl -I status + headers does not match curl"
+  echo "  surl: '$surl_i'"
+  echo "  curl: '$curl_i'"
+  exit 1
+fi
+
 # Stop the server with SIGTERM
 kill -TERM $server_pid 2>/dev/null || true
 
