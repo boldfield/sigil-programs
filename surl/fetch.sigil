@@ -12,7 +12,8 @@ import std.byte_array
 import std.http
 import std.list
 import std.mem
-import std.net
+import std.net as netmod
+import std.fs as fsmod
 import std.ordering
 import std.result
 import std.string
@@ -20,7 +21,8 @@ use std.byte_array.{byte_array_get_opt, byte_array_slice_opt, byte_to_int, strin
 use std.http.{Request, Response, parse_response, parse_status_line, serialize_request};
 use std.list.{Cons, List, Nil};
 use std.mem.{Mem};
-use std.net.{Closed, Conn, ConnectionRefused, NetError, Other, ResolveFailed, TlsError, close, connect, recv_all, send};
+use netmod.{Closed, Conn, ConnectionRefused, NetError, ResolveFailed, TlsError, Other as NetOther, close, connect, recv_all, send};
+use fsmod.{write_file, Fs};
 use std.ordering.{Equal, string_compare};
 use std.result.{Err, Ok, Result};
 use std.string.{string_split};
@@ -32,7 +34,7 @@ fn net_error_to_string(err: NetError) -> String ![] {
     ConnectionRefused => "Connection refused",
     TlsError(msg) => msg,
     Closed => "Connection closed",
-    Other(msg) => msg,
+    NetOther(msg) => msg,
   }
 }
 
@@ -53,12 +55,12 @@ fn send_all_loop(conn: Conn, data: ByteArray, pos: Int, total: Int) -> Result[Un
   match pos >= total {
     true => Ok(()),
     false => match byte_array_slice_opt(data, pos, total) {
-      None => Err(Other("send slice out of bounds")),
+      None => Err(NetOther("send slice out of bounds")),
       Some(chunk) => match send(conn, chunk) {
         Err(e) => Err(e),
         Ok(n) => match n > 0 {
           true => send_all_loop(conn, data, pos + n, total),
-          false => Err(Other("zero bytes sent")),
+          false => Err(NetOther("zero bytes sent")),
         },
       },
     },
@@ -149,5 +151,13 @@ fn fetch(req: Request, head: Bool) -> Result[(String, Response), String] ![Net, 
         },
       }
     },
+  }
+}
+
+// Write body to a file; return 0 on success, 1 on error.
+fn write_body_to_file(path: String, body: String) -> Int ![Fs] {
+  match write_file(path, body) {
+    Ok(_) => 0,
+    Err(_) => 1,
   }
 }

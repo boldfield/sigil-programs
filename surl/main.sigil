@@ -2,29 +2,29 @@ import std.env
 import std.http
 import std.int
 import std.io
+import std.fs as fsmod
 import std.byte_array
 import std.list
 import std.mem
-import std.net
+import std.net as netmod
 import std.string
 import args
 import request
 import fetch
-import write
 
 use std.env.{env_args, Env};
 use std.http.{Header, Response};
 use std.int.{int_to_string};
 use std.io.{IO};
+use fsmod.{Fs};
 use std.byte_array.{string_from_bytes};
 use std.list.{Cons, List, Nil};
 use std.mem.{Mem};
-use std.net.{Net};
+use netmod.{Net};
 use std.string.{string_concat, string_compare};
 use args.{parse_args};
 use request.{build_request};
-use fetch.{fetch};
-use write.{write_body_to_file};
+use fetch.{fetch, write_body_to_file};
 
 fn print_headers(headers: List[Header]) -> Unit ![IO] {
   match headers {
