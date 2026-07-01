@@ -94,6 +94,29 @@ else
   exit 1
 fi
 
+# Test -I (HEAD request - status + headers only)
+surl_head=$(bin/main -I "http://127.0.0.1:$port/test.txt" 2>&1)
+curl_head=$(curl -sI "http://127.0.0.1:$port/test.txt" 2>&1)
+
+# Extract status line from both outputs for comparison
+surl_status=$(echo "$surl_head" | head -1)
+curl_status=$(echo "$curl_head" | head -1)
+
+# Extract Content-Type header from both outputs for comparison
+surl_content_type=$(echo "$surl_head" | grep -i "^content-type:" || true)
+curl_content_type=$(echo "$curl_head" | grep -i "^content-type:" || true)
+
+if [ "$surl_status" = "$curl_status" ] && [ "$surl_content_type" = "$curl_content_type" ]; then
+  echo "✓ surl -I status + headers matches curl"
+else
+  echo "✗ surl -I status + headers does not match curl"
+  echo "  surl status:  '$surl_status'"
+  echo "  curl status:  '$curl_status'"
+  echo "  surl c-type:  '$surl_content_type'"
+  echo "  curl c-type:  '$curl_content_type'"
+  exit 1
+fi
+
 # Stop the server with SIGTERM
 kill -TERM $server_pid 2>/dev/null || true
 

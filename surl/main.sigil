@@ -4,6 +4,9 @@ import std.byte_array
 import std.list
 import std.mem
 import std.net
+import std.int
+import std.http
+import std.string
 import args
 import request
 import fetch
@@ -11,12 +14,35 @@ import fetch
 use std.env.{env_args, Env};
 use std.io.{IO};
 use std.byte_array.{string_from_bytes};
-use std.list.{List};
+use std.list.{Cons, List, Nil};
 use std.mem.{Mem};
 use std.net.{Net};
+use std.int.{int_to_string};
+use std.http.{Header, Response};
+use std.string.{string_concat};
 use args.{parse_args};
 use request.{build_request};
 use fetch.{fetch};
+
+fn print_status_line(resp: Response) -> Unit ![IO] {
+  let status_str: String = int_to_string(resp.status);
+  perform IO.println(string_concat("HTTP/1.1 ", string_concat(status_str, string_concat(" ", resp.reason))));
+}
+
+fn print_headers_loop(headers: List[Header]) -> Unit ![IO] {
+  match headers {
+    Nil => (),
+    Cons(h, rest) => {
+      let line: String = string_concat(h.name, string_concat(": ", h.value));
+      perform IO.println(line);
+      print_headers_loop(rest)
+    },
+  }
+}
+
+fn print_headers(resp: Response) -> Unit ![IO] {
+  print_headers_loop(resp.headers)
+}
 
 fn main() -> Int ![IO, Env, Net, Mem] {
   let argv: List[String] = env_args();
@@ -38,32 +64,23 @@ fn main() -> Int ![IO, Env, Net, Mem] {
               1
             },
             Ok(resp) => {
-              match string_from_bytes(resp.body) {
-                None => {
-                  perform IO.println("Error: invalid UTF-8 in response body");
-                  1
-                },
-                Some(body_str) => {
-                  // Emit the response body and terminate the line.
-                  //
-                  // std.io only exposes `print`/`println`, and on the pinned
-                  // toolchain `print` is line-buffered with NO flush at process
-                  // exit: a body that does not end in "\n" (e.g. the `-d` /echo
-                  // echo of "hello world") is left in the buffer and lost,
-                  // printing nothing. `println` flushes (the newline triggers
-                  // it), so it is the only reliable way to emit the body here.
-                  //
-                  // Writing raw bytes to stdout to match curl exactly (no added
-                  // "\n") is not reachable: std.io has no unbuffered/flush op,
-                  // and the one byte-exact route — std.fs.write_file to
-                  // /dev/stdout — cannot be imported, because std.fs's
-                  // `FsError.Other` collides with std.net's `NetError.Other`
-                  // (E0118) and surl needs std.net for the transport. So surl
-                  // line-terminates its output like sjq and every other program
-                  // in this repo. The oracle accounts for this single trailing
-                  // newline with a byte-exact comparison.
-                  perform IO.println(body_str);
+              match config.head_only {
+                true => {
+                  perform print_status_line(resp);
+                  perform print_headers(resp);
                   0
+                },
+                false => {
+                  match string_from_bytes(resp.body) {
+                    None => {
+                      perform IO.println("Error: invalid UTF-8 in response body");
+                      1
+                    },
+                    Some(body_str) => {
+                      perform IO.println(body_str);
+                      0
+                    },
+                  }
                 },
               }
             },
