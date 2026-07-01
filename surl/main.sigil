@@ -44,7 +44,15 @@ fn main() -> Int ![IO, Env, Net, Mem] {
                   1
                 },
                 Some(body_str) => {
-                  perform IO.print(body_str);
+                  // std.io's `print` is line-buffered and only flushed on a
+                  // newline, with no flush at process exit — a response body
+                  // that does not end in "\n" (e.g. the `-d` /echo echo of
+                  // "hello world") would otherwise be left in the buffer and
+                  // lost, printing nothing. `println` writes the body and
+                  // flushes, matching how sjq and surl's other output paths
+                  // already emit their results. The oracle compares via
+                  // `$(...)`, which strips the trailing newline on both sides.
+                  perform IO.println(body_str);
                   0
                 },
               }
