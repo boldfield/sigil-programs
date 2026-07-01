@@ -26,6 +26,24 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
         else:
             super().do_GET()
 
+    def do_POST(self):
+        # Drain any request body first so the socket is left clean.
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        body = self.rfile.read(length) if length > 0 else b""
+
+        if self.path == "/echo":
+            # Echo the received request body back verbatim.
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            # No POST handler for other paths — 501, matching curl's view.
+            self.send_response(501)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
 def serve_dir(directory):
     """Serve a directory over HTTP on a free port. Print port to stdout, stop on SIGTERM."""
     os.chdir(directory)

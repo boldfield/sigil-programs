@@ -43,6 +43,35 @@ fn find_method(argv: List[String]) -> String ![] {
   }
 }
 
+fn has_flag(argv: List[String], flag: String) -> Bool ![] {
+  match argv {
+    Nil => false,
+    Cons(arg, rest) => {
+      match string_compare(arg, flag) {
+        Equal => true,
+        _ => has_flag(rest, flag),
+      }
+    },
+  }
+}
+
+fn find_data(argv: List[String]) -> String ![] {
+  match argv {
+    Nil => "",
+    Cons(arg, rest) => {
+      match string_compare(arg, "-d") {
+        Equal => {
+          match rest {
+            Nil => "",
+            Cons(data, _) => data,
+          }
+        },
+        _ => find_data(rest),
+      }
+    },
+  }
+}
+
 fn skip_flag_args_acc(argv: List[String], acc: List[String]) -> List[String] ![] {
   match argv {
     Nil => reverse_list_acc(acc, Nil),
@@ -62,7 +91,17 @@ fn skip_flag_args_acc(argv: List[String], acc: List[String]) -> List[String] ![]
                 Cons(_, rest2) => skip_flag_args_acc(rest2, acc),
               }
             },
-            _ => skip_flag_args_acc(rest, Cons(arg, acc)),
+            _ => {
+              match string_compare(arg, "-d") {
+                Equal => {
+                  match rest {
+                    Nil => reverse_list_acc(acc, Nil),
+                    Cons(_, rest2) => skip_flag_args_acc(rest2, acc),
+                  }
+                },
+                _ => skip_flag_args_acc(rest, Cons(arg, acc)),
+              }
+            },
           }
         },
       }
@@ -130,13 +169,21 @@ fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
     Nil => Err(usage()),
     Cons(_, Nil) => Err(usage()),
     Cons(_, Cons(url, _)) => {
-      let method: String = find_method(argv);
+      let data: String = find_data(argv);
+      // -d implies POST unless the method was set explicitly with -X.
+      let method: String = match has_flag(argv, "-X") {
+        true => find_method(argv),
+        false => match has_flag(argv, "-d") {
+          true => "POST",
+          false => "GET",
+        },
+      };
       let headers: List[(String, String)] = find_headers(argv);
       Ok(Config {
         url: url,
         method: method,
         headers: headers,
-        data: "",
+        data: data,
         output: "",
         head_only: false,
         follow: false,

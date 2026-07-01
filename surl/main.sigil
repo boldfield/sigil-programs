@@ -44,7 +44,25 @@ fn main() -> Int ![IO, Env, Net, Mem] {
                   1
                 },
                 Some(body_str) => {
-                  perform IO.print(body_str);
+                  // Emit the response body and terminate the line.
+                  //
+                  // std.io only exposes `print`/`println`, and on the pinned
+                  // toolchain `print` is line-buffered with NO flush at process
+                  // exit: a body that does not end in "\n" (e.g. the `-d` /echo
+                  // echo of "hello world") is left in the buffer and lost,
+                  // printing nothing. `println` flushes (the newline triggers
+                  // it), so it is the only reliable way to emit the body here.
+                  //
+                  // Writing raw bytes to stdout to match curl exactly (no added
+                  // "\n") is not reachable: std.io has no unbuffered/flush op,
+                  // and the one byte-exact route — std.fs.write_file to
+                  // /dev/stdout — cannot be imported, because std.fs's
+                  // `FsError.Other` collides with std.net's `NetError.Other`
+                  // (E0118) and surl needs std.net for the transport. So surl
+                  // line-terminates its output like sjq and every other program
+                  // in this repo. The oracle accounts for this single trailing
+                  // newline with a byte-exact comparison.
+                  perform IO.println(body_str);
                   0
                 },
               }
