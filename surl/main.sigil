@@ -53,23 +53,27 @@ fn main() -> Int ![IO, Env, Net, Mem] {
               perform IO.println(err_msg);
               1
             },
-            Ok(resp) => {
-              match config.head_only {
-                true => {
-                  let status_line: String = string_concat("HTTP/1.1 ", string_concat(int_to_string(resp.status), string_concat(" ", resp.reason)));
-                  perform IO.println(status_line);
-                  print_headers(resp.headers);
-                  0
-                },
-                false => {
-                  match string_from_bytes(resp.body) {
-                    None => {
-                      perform IO.println("Error: invalid UTF-8 in response body");
-                      1
-                    },
-                    Some(body_str) => {
-                      perform IO.println(body_str);
+            Ok(resp_tuple) => {
+              match resp_tuple {
+                (resp, version) => {
+                  match config.head_only {
+                    true => {
+                      let status_line: String = string_concat(version, string_concat(" ", string_concat(int_to_string(resp.status), string_concat(" ", resp.reason))));
+                      perform IO.println(status_line);
+                      print_headers(resp.headers);
                       0
+                    },
+                    false => {
+                      match string_from_bytes(resp.body) {
+                        None => {
+                          perform IO.println("Error: invalid UTF-8 in response body");
+                          1
+                        },
+                        Some(body_str) => {
+                          perform IO.println(body_str);
+                          0
+                        },
+                      }
                     },
                   }
                 },
