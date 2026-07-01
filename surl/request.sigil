@@ -2,13 +2,23 @@ import std.http
 import std.url
 import std.list
 import std.byte_array
+import std.int
+import std.string
 import args
 
 use std.http.{Request, Header};
 use std.url.{parse_url};
 use std.list.{Cons, Nil, append};
-use std.byte_array.{byte_array_empty, string_to_bytes};
+use std.byte_array.{byte_array_empty, string_to_bytes, byte_array_length};
+use std.int.{int_to_string};
+use std.string.{string_compare};
 use args.{Config};
+
+fn byte_len(data: ByteArray, pos: Int) -> Int ![] {
+  match byte_array_length(data) {
+    len => len,
+  }
+}
 
 fn tuple_to_header(t: (String, String)) -> Header ![] {
   match t {
@@ -26,14 +36,22 @@ fn headers_from_tuples(tuples: List[(String, String)]) -> List[Header] ![] {
 fn build_request(c: Config) -> Result[Request, String] ![] {
   match parse_url(c.url) {
     Ok(url_obj) => {
+      let body: ByteArray = match string_compare(c.data, "") {
+        Equal => byte_array_empty(),
+        _ => string_to_bytes(c.data),
+      };
       let host_header: Header = Header { name: "Host", value: url_obj.host };
       let custom_headers: List[Header] = headers_from_tuples(c.headers);
-      let headers: List[Header] = append(Cons(host_header, Nil), custom_headers);
-      let body: ByteArray = string_to_bytes(c.data);
+      let headers_with_host: List[Header] = append(Cons(host_header, Nil), custom_headers);
+      let body_len: Int = byte_len(body, 0);
+      let headers_with_length: List[Header] = match string_compare(c.data, "") {
+        Equal => headers_with_host,
+        _ => Cons(Header { name: "Content-Length", value: int_to_string(body_len) }, headers_with_host),
+      };
       let req: Request = Request {
         method: c.method,
         url: url_obj,
-        headers: headers,
+        headers: headers_with_length,
         body: body,
       };
       Ok(req)
