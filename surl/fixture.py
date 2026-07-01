@@ -11,6 +11,21 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # suppress logs
 
+    def do_GET(self):
+        if self.path == "/headers":
+            headers_str = ""
+            for key, value in self.headers.items():
+                headers_str += f"{key}: {value}\n"
+
+            body = headers_str.encode()
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            super().do_GET()
+
 def serve_dir(directory):
     """Serve a directory over HTTP on a free port. Print port to stdout, stop on SIGTERM."""
     os.chdir(directory)
