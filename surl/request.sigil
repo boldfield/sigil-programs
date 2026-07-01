@@ -7,7 +7,7 @@ import args
 use std.http.{Request, Header};
 use std.url.{parse_url};
 use std.list.{Cons, Nil, append};
-use std.byte_array.{byte_array_empty};
+use std.byte_array.{string_to_bytes};
 use args.{Config};
 
 fn tuple_to_header(t: (String, String)) -> Header ![] {
@@ -33,7 +33,9 @@ fn build_request(c: Config) -> Result[Request, String] ![] {
         method: c.method,
         url: url_obj,
         headers: headers,
-        body: byte_array_empty(),
+        // std.http.serialize_request emits Content-Length automatically when
+        // the body is non-empty, so we only set the body bytes here.
+        body: string_to_bytes(c.data),
       };
       Ok(req)
     },
