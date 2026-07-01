@@ -36,7 +36,7 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         else:
-            super().do_POST()
+            self.send_error(501)
 
 def serve_dir(directory):
     """Serve a directory over HTTP on a free port. Print port to stdout, stop on SIGTERM."""
