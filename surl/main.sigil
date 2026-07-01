@@ -58,7 +58,7 @@ fn main() -> Int ![IO, Env, Net, Mem] {
                 true => {
                   let status_line: String = string_concat("HTTP/1.1 ", string_concat(int_to_string(resp.status), string_concat(" ", resp.reason)));
                   perform IO.println(status_line);
-                  perform print_headers(resp.headers);
+                  print_headers(resp.headers);
                   0
                 },
                 false => {
