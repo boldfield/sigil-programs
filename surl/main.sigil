@@ -6,6 +6,7 @@ import std.byte_array
 import std.list
 import std.mem
 import std.net
+import std.ordering
 import std.string
 import args
 import request
@@ -19,7 +20,8 @@ use std.byte_array.{string_from_bytes};
 use std.list.{Cons, List, Nil};
 use std.mem.{Mem};
 use std.net.{Net};
-use std.string.{string_concat};
+use std.ordering.{Equal};
+use std.string.{string_compare, string_concat};
 use args.{parse_args};
 use request.{build_request};
 use fetch.{fetch};
@@ -34,7 +36,7 @@ fn print_headers(headers: List[Header]) -> Unit ![IO] {
   }
 }
 
-fn main() -> Int ![IO, Env, Net, Mem] {
+fn main() -> Int ![IO, Env, Net, Mem, Fs] {
   let argv: List[String] = env_args();
   match parse_args(argv) {
     Err(usage_msg) => {
@@ -68,26 +70,31 @@ fn main() -> Int ![IO, Env, Net, Mem] {
                       1
                     },
                     Some(body_str) => {
-                      // Emit the response body and terminate the line.
-                      //
-                      // std.io only exposes `print`/`println`, and on the pinned
-                      // toolchain `print` is line-buffered with NO flush at process
-                      // exit: a body that does not end in "\n" (e.g. the `-d` /echo
-                      // echo of "hello world") is left in the buffer and lost,
-                      // printing nothing. `println` flushes (the newline triggers
-                      // it), so it is the only reliable way to emit the body here.
-                      //
-                      // Writing raw bytes to stdout to match curl exactly (no added
-                      // "\n") is not reachable: std.io has no unbuffered/flush op,
-                      // and the one byte-exact route — std.fs.write_file to
-                      // /dev/stdout — cannot be imported, because std.fs's
-                      // `FsError.Other` collides with std.net's `NetError.Other`
-                      // (E0118) and surl needs std.net for the transport. So surl
-                      // line-terminates its output like sjq and every other program
-                      // in this repo. The oracle accounts for this single trailing
-                      // newline with a byte-exact comparison.
-                      perform IO.println(body_str);
-                      0
+                      match string_compare(config.output, "") {
+                        Equal => {
+                          // Emit the response body to stdout and terminate
+                          // the line. std.io only exposes println (plain
+                          // print is line-buffered with no flush at exit on
+                          // the pinned toolchain). The oracle accounts for
+                          // the single trailing newline.
+                          perform IO.println(body_str);
+                          0
+                        },
+                        _ => {
+                          // Write body to file via the builtin Fs effect
+                          // directly. Fs is a builtin (no import needed),
+                          // so this avoids the FsError.Other / NetError.Other
+                          // E0118 collision that importing std.fs would cause.
+                          // The raw op returns (Int, String): 0 = success.
+                          match perform Fs.write_file(config.output, body_str) {
+                            (0, _) => 0,
+                            (_, _) => {
+                              perform IO.println("Error: could not write to file");
+                              1
+                            },
+                          }
+                        },
+                      }
                     },
                   }
                 },
