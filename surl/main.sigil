@@ -20,7 +20,6 @@ use std.byte_array.{string_from_bytes};
 use std.list.{Cons, List, Nil};
 use std.mem.{Mem};
 use std.net.{Net};
-use std.result.{Err, Ok};
 use std.string.{string_concat, string_compare};
 use args.{parse_args};
 use request.{build_request};
@@ -87,7 +86,7 @@ fn main() -> Int ![IO, Env, Net, Mem, Fs] {
                           0
                         },
                         _ => {
-                          let result: Int = perform write_body_to_file(config.output, body_str);
+                          let result: Int = write_body_to_file(config.output, body_str);
                           match result {
                             0 => 0,
                             _ => {
