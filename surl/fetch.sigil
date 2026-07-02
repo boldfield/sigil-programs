@@ -38,7 +38,7 @@ fn net_error_to_string(err: NetError) -> String ![] {
   }
 }
 
-// Find a header value by name (case-insensitive).
+// Find a header value by name (case-sensitive).
 fn find_header(headers: List[Header], name: String) -> Option[String] ![] {
   match headers {
     Nil => None,
@@ -59,6 +59,26 @@ fn is_redirect(status: Int) -> Bool ![] {
       false => false,
     },
     false => false,
+  }
+}
+
+// Resolve a relative URL against a base URL.
+// If the location is relative (starts with /), construct a URL with the
+// base URL's scheme, host, and port, and the location's path and query.
+// Otherwise, return None.
+fn resolve_relative_url(base_url: Url, location: String) -> Option[Url] ![] {
+  match byte_array_get_opt(string_to_bytes(location), 0) {
+    None => None,
+    Some(b) => match byte_to_int(b) {
+      47 => Some(Url {
+        scheme: base_url.scheme,
+        host: base_url.host,
+        port: base_url.port,
+        path: location,
+        query: "",
+      }),
+      _ => None,
+    },
   }
 }
 
@@ -195,7 +215,6 @@ fn fetch_with_redirects(req: Request, head: Bool, follow: Bool, hops: Int) -> Re
             true => match find_header(resp.headers, "Location") {
               None => Ok((version, resp)),
               Some(location) => match parse_url(location) {
-                Err(e) => Err(e),
                 Ok(new_url) => {
                   let new_req: Request = Request {
                     method: "GET",
@@ -204,6 +223,18 @@ fn fetch_with_redirects(req: Request, head: Bool, follow: Bool, hops: Int) -> Re
                     body: string_to_bytes(""),
                   };
                   fetch_with_redirects(new_req, head, follow, hops - 1)
+                },
+                Err(_) => match resolve_relative_url(req.url, location) {
+                  None => Err("invalid Location header"),
+                  Some(new_url) => {
+                    let new_req: Request = Request {
+                      method: "GET",
+                      url: new_url,
+                      headers: Cons(Header { name: "Host", value: new_url.host }, Nil),
+                      body: string_to_bytes(""),
+                    };
+                    fetch_with_redirects(new_req, head, follow, hops - 1)
+                  },
                 },
               },
             },
