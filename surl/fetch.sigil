@@ -216,24 +216,24 @@ fn fetch_with_redirects(req: Request, head: Bool, follow: Bool, hops: Int) -> Re
               None => Ok((version, resp)),
               Some(location) => match parse_url(location) {
                 Ok(new_url) => {
-                  let new_req: Request = Request {
+                  let abs_req: Request = Request {
                     method: "GET",
                     url: new_url,
                     headers: Cons(Header { name: "Host", value: new_url.host }, Nil),
                     body: string_to_bytes(""),
                   };
-                  fetch_with_redirects(new_req, head, follow, hops - 1)
+                  fetch_with_redirects(abs_req, head, follow, hops - 1)
                 },
                 Err(_) => match resolve_relative_url(req.url, location) {
                   None => Err("invalid Location header"),
                   Some(new_url) => {
-                    let new_req: Request = Request {
+                    let rel_req: Request = Request {
                       method: "GET",
                       url: new_url,
                       headers: Cons(Header { name: "Host", value: new_url.host }, Nil),
                       body: string_to_bytes(""),
                     };
-                    fetch_with_redirects(new_req, head, follow, hops - 1)
+                    fetch_with_redirects(rel_req, head, follow, hops - 1)
                   },
                 },
               },
