@@ -16,14 +16,16 @@ import std.net
 import std.ordering
 import std.result
 import std.string
-use std.byte_array.{byte_array_get_opt, byte_array_slice_opt, byte_to_int, string_from_bytes};
-use std.http.{Request, Response, parse_response, parse_status_line, serialize_request};
+import std.url
+use std.byte_array.{byte_array_get_opt, byte_array_slice_opt, byte_to_int, string_from_bytes, string_to_bytes};
+use std.http.{Header, Request, Response, parse_response, parse_status_line, serialize_request};
 use std.list.{Cons, List, Nil};
 use std.mem.{Mem};
 use std.net.{Closed, Conn, ConnectionRefused, NetError, Other, ResolveFailed, TlsError, close, connect, recv_all, send};
 use std.ordering.{Equal, string_compare};
 use std.result.{Err, Ok, Result};
 use std.string.{string_split};
+use std.url.{Url, parse_url, default_port};
 
 // Render a NetError as a human-readable String for the Result's error arm.
 fn net_error_to_string(err: NetError) -> String ![] {
@@ -33,6 +35,50 @@ fn net_error_to_string(err: NetError) -> String ![] {
     TlsError(msg) => msg,
     Closed => "Connection closed",
     Other(msg) => msg,
+  }
+}
+
+// Find a header value by name (case-sensitive).
+fn find_header(headers: List[Header], name: String) -> Option[String] ![] {
+  match headers {
+    Nil => None,
+    Cons(h, rest) => {
+      match string_compare(h.name, name) {
+        Equal => Some(h.value),
+        _ => find_header(rest, name),
+      }
+    },
+  }
+}
+
+// Check if a status code is a redirect (3xx).
+fn is_redirect(status: Int) -> Bool ![] {
+  match status >= 300 {
+    true => match status < 400 {
+      true => true,
+      false => false,
+    },
+    false => false,
+  }
+}
+
+// Resolve a relative URL against a base URL.
+// If the location is relative (starts with /), construct a URL with the
+// base URL's scheme, host, and port, and the location's path and query.
+// Otherwise, return None.
+fn resolve_relative_url(base_url: Url, location: String) -> Option[Url] ![] {
+  match byte_array_get_opt(string_to_bytes(location), 0) {
+    None => None,
+    Some(b) => match byte_to_int(b) {
+      47 => Some(Url {
+        scheme: base_url.scheme,
+        host: base_url.host,
+        port: base_url.port,
+        path: location,
+        query: "",
+      }),
+      _ => None,
+    },
   }
 }
 
@@ -109,13 +155,13 @@ fn parse_head_response(raw: ByteArray) -> Result[Response, String] ![Mem] {
   }
 }
 
-// fetch: connect, send the serialized request, read the full response,
+// fetch_single: connect, send the serialized request, read the full response,
 // close, and return the HTTP version plus the parsed Response. The
 // connection is closed on every exit path. Net/parse errors are surfaced
 // as a String. Pass head=true for HEAD requests: parse_response is
 // skipped in favour of parse_head_response, which does not require body
 // bytes even when Content-Length is non-zero.
-fn fetch(req: Request, head: Bool) -> Result[(String, Response), String] ![Net, Mem] {
+fn fetch_single(req: Request, head: Bool) -> Result[(String, Response), String] ![Net, Mem] {
   let tls: Bool = match string_compare(req.url.scheme, "https") {
     Equal => true,
     _ => false,
@@ -150,4 +196,56 @@ fn fetch(req: Request, head: Bool) -> Result[(String, Response), String] ![Net, 
       }
     },
   }
+}
+
+// fetch_with_redirects: recursively follow redirects up to max_hops.
+// If follow is false, return the first response (even if 3xx).
+// If follow is true and the response is 3xx with a Location header,
+// parse the new URL and fetch again (up to ~10 hops).
+fn fetch_with_redirects(req: Request, head: Bool, follow: Bool, hops: Int) -> Result[(String, Response), String] ![Net, Mem] {
+  match hops <= 0 {
+    true => Err("too many redirects"),
+    false => match fetch_single(req, head) {
+      Err(e) => Err(e),
+      Ok((version, resp)) => {
+        match follow {
+          false => Ok((version, resp)),
+          true => match is_redirect(resp.status) {
+            false => Ok((version, resp)),
+            true => match find_header(resp.headers, "Location") {
+              None => Ok((version, resp)),
+              Some(location) => match parse_url(location) {
+                Ok(new_url) => {
+                  let abs_req: Request = Request {
+                    method: "GET",
+                    url: new_url,
+                    headers: Cons(Header { name: "Host", value: new_url.host }, Nil),
+                    body: string_to_bytes(""),
+                  };
+                  fetch_with_redirects(abs_req, head, follow, hops - 1)
+                },
+                Err(_) => match resolve_relative_url(req.url, location) {
+                  None => Err("invalid Location header"),
+                  Some(new_url) => {
+                    let rel_req: Request = Request {
+                      method: "GET",
+                      url: new_url,
+                      headers: Cons(Header { name: "Host", value: new_url.host }, Nil),
+                      body: string_to_bytes(""),
+                    };
+                    fetch_with_redirects(rel_req, head, follow, hops - 1)
+                  },
+                },
+              },
+            },
+          },
+        }
+      },
+    },
+  }
+}
+
+// fetch: wrapper around fetch_with_redirects with a default hop limit of 10.
+fn fetch(req: Request, head: Bool, follow: Bool) -> Result[(String, Response), String] ![Net, Mem] {
+  fetch_with_redirects(req, head, follow, 10)
 }

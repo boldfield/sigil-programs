@@ -143,6 +143,31 @@ else
   exit 1
 fi
 
+# Test -L (follow redirects): without -L, should get 302; with -L, should reach final target
+surl_no_follow=$(bin/main "http://127.0.0.1:$port/a" 2>&1)
+curl_no_follow=$(curl -s "http://127.0.0.1:$port/a" 2>&1)
+
+if [ "$surl_no_follow" = "$curl_no_follow" ]; then
+  echo "✓ surl without -L returns 302 response body (empty)"
+else
+  echo "✗ surl without -L does not match curl"
+  echo "  surl: '$surl_no_follow'"
+  echo "  curl: '$curl_no_follow'"
+  exit 1
+fi
+
+surl_follow=$(bin/main -L "http://127.0.0.1:$port/a" 2>&1)
+curl_follow=$(curl -sL "http://127.0.0.1:$port/a" 2>&1)
+
+if [ "$surl_follow" = "$curl_follow" ]; then
+  echo "✓ surl -L follows redirects to final target"
+else
+  echo "✗ surl -L does not match curl"
+  echo "  surl: '$surl_follow'"
+  echo "  curl: '$curl_follow'"
+  exit 1
+fi
+
 # Stop the server with SIGTERM
 kill -TERM $server_pid 2>/dev/null || true
 
