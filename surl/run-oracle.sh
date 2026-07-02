@@ -123,6 +123,26 @@ else
   exit 1
 fi
 
+# Test -o FILE: body written to file, nothing on stdout
+outfile="$tmpdir/surl_o.out"
+curl_body=$(curl -s "http://127.0.0.1:$port/test.txt")
+stdout_capture=$(bin/main -o "$outfile" "http://127.0.0.1:$port/test.txt")
+
+if [ -n "$stdout_capture" ]; then
+  echo "✗ surl -o produced stdout output: '$stdout_capture'"
+  exit 1
+fi
+
+surl_o_content=$(cat "$outfile" 2>/dev/null || true)
+if [ "$surl_o_content" = "$curl_body" ]; then
+  echo "✓ surl -o writes body to file, nothing to stdout"
+else
+  echo "✗ surl -o file contents don't match curl"
+  echo "  expected: '$curl_body'"
+  echo "  got:      '$surl_o_content'"
+  exit 1
+fi
+
 # Stop the server with SIGTERM
 kill -TERM $server_pid 2>/dev/null || true
 
