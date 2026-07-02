@@ -23,6 +23,20 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif self.path == "/a":
+            # Redirect /a to /b with 302 status
+            self.send_response(302)
+            self.send_header("Location", "/b")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        elif self.path == "/b":
+            # Redirect target: return content
+            body = b"redirect target"
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         else:
             super().do_GET()
 
