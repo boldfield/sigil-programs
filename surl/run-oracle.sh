@@ -168,6 +168,19 @@ else
   exit 1
 fi
 
+# Test -u (Basic auth): check Authorization header is sent correctly
+surl_auth=$(bin/main -u "user:password" "http://127.0.0.1:$port/headers" 2>&1 | grep -i "^Authorization:" || true)
+curl_auth=$(curl -s -u "user:password" "http://127.0.0.1:$port/headers" 2>&1 | grep -i "^Authorization:" || true)
+
+if [ "$surl_auth" = "$curl_auth" ]; then
+  echo "✓ surl -u Authorization header matches curl"
+else
+  echo "✗ surl -u Authorization header does not match curl"
+  echo "  surl: '$surl_auth'"
+  echo "  curl: '$curl_auth'"
+  exit 1
+fi
+
 # Stop the server with SIGTERM
 kill -TERM $server_pid 2>/dev/null || true
 
