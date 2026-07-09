@@ -50,7 +50,7 @@ fn main() -> Int ![IO, Env, Net, Mem, Fs] {
           1
         },
         Ok(req) => {
-          match fetch(req, config.head_only) {
+          match fetch(req, config.head_only, config.follow) {
             Err(err_msg) => {
               perform IO.println(err_msg);
               1
