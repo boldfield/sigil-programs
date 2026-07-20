@@ -2,13 +2,19 @@ import std.http
 import std.url
 import std.list
 import std.byte_array
+import std.string
+import std.option
 import args
+import base64
 
 use std.http.{Request, Header};
 use std.url.{parse_url};
 use std.list.{Cons, Nil, append};
 use std.byte_array.{string_to_bytes};
+use std.string.{string_compare, string_concat};
+use std.option.{None, Option, Some};
 use args.{Config};
+use base64.{base64_encode};
 
 fn tuple_to_header(t: (String, String)) -> Header ![] {
   match t {
@@ -23,12 +29,28 @@ fn headers_from_tuples(tuples: List[(String, String)]) -> List[Header] ![] {
   }
 }
 
+fn make_auth_header(user: String) -> Option[Header] ![] {
+  match string_compare(user, "") {
+    Equal => None,
+    _ => {
+      let user_bytes: ByteArray = string_to_bytes(user);
+      let encoded: String = base64_encode(user_bytes);
+      let auth_value: String = string_concat("Basic ", encoded);
+      Some(Header { name: "Authorization", value: auth_value })
+    },
+  }
+}
+
 fn build_request(c: Config) -> Result[Request, String] ![] {
   match parse_url(c.url) {
     Ok(url_obj) => {
       let host_header: Header = Header { name: "Host", value: url_obj.host };
       let custom_headers: List[Header] = headers_from_tuples(c.headers);
-      let headers: List[Header] = append(Cons(host_header, Nil), custom_headers);
+      let auth_headers: List[Header] = match make_auth_header(c.user) {
+        None => Cons(host_header, Nil),
+        Some(auth_header) => Cons(auth_header, Cons(host_header, Nil)),
+      };
+      let headers: List[Header] = append(auth_headers, custom_headers);
       let req: Request = Request {
         method: c.method,
         url: url_obj,
