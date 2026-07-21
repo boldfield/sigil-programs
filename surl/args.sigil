@@ -106,6 +106,23 @@ fn find_user(argv: List[String]) -> String ![] {
   }
 }
 
+fn find_cookie(argv: List[String]) -> String ![] {
+  match argv {
+    Nil => "",
+    Cons(arg, rest) => {
+      match string_compare(arg, "-b") {
+        Equal => {
+          match rest {
+            Nil => "",
+            Cons(cookie, _) => cookie,
+          }
+        },
+        _ => find_cookie(rest),
+      }
+    },
+  }
+}
+
 fn skip_flag_args_acc(argv: List[String], acc: List[String]) -> List[String] ![] {
   match argv {
     Nil => reverse_list_acc(acc, Nil),
@@ -155,7 +172,17 @@ fn skip_flag_args_acc(argv: List[String], acc: List[String]) -> List[String] ![]
                                     Cons(_, rest2) => skip_flag_args_acc(rest2, acc),
                                   }
                                 },
-                                _ => skip_flag_args_acc(rest, Cons(arg, acc)),
+                                _ => {
+                                  match string_compare(arg, "-b") {
+                                    Equal => {
+                                      match rest {
+                                        Nil => reverse_list_acc(acc, Nil),
+                                        Cons(_, rest2) => skip_flag_args_acc(rest2, acc),
+                                      }
+                                    },
+                                    _ => skip_flag_args_acc(rest, Cons(arg, acc)),
+                                  }
+                                },
                               }
                             },
                           }
@@ -236,6 +263,7 @@ fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
       let data: String = find_data(argv);
       let output: String = find_output(argv);
       let user: String = find_user(argv);
+      let cookie: String = find_cookie(argv);
       let head_only: Bool = has_flag(argv, "-I");
       let follow: Bool = has_flag(argv, "-L");
       // -I implies HEAD; -d implies POST; -X overrides all.
@@ -259,7 +287,7 @@ fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
         head_only: head_only,
         follow: follow,
         user: user,
-        cookie: "",
+        cookie: cookie,
         cookie_jar: "",
         verbose: false,
         insecure: false,

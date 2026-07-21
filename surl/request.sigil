@@ -41,6 +41,13 @@ fn make_auth_header(user: String) -> Option[Header] ![] {
   }
 }
 
+fn make_cookie_header(cookie: String) -> Option[Header] ![] {
+  match string_compare(cookie, "") {
+    Equal => None,
+    _ => Some(Header { name: "Cookie", value: cookie }),
+  }
+}
+
 fn build_request(c: Config) -> Result[Request, String] ![] {
   match parse_url(c.url) {
     Ok(url_obj) => {
@@ -50,7 +57,11 @@ fn build_request(c: Config) -> Result[Request, String] ![] {
         None => Cons(host_header, Nil),
         Some(auth_header) => Cons(auth_header, Cons(host_header, Nil)),
       };
-      let headers: List[Header] = append(auth_headers, custom_headers);
+      let headers_with_auth: List[Header] = append(auth_headers, custom_headers);
+      let headers: List[Header] = match make_cookie_header(c.cookie) {
+        None => headers_with_auth,
+        Some(cookie_header) => Cons(cookie_header, headers_with_auth),
+      };
       let req: Request = Request {
         method: c.method,
         url: url_obj,
