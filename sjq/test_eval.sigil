@@ -44,8 +44,59 @@ fn jlist_equal(x: JList, y: JList) -> Bool ![] {
   }
 }
 
+fn jobject_equal(x: JObject, y: JObject) -> Bool ![] {
+  match x {
+    JONil => {
+      match y {
+        JONil => true,
+        _ => false,
+      }
+    },
+    JOCons(xk, xv, xrest) => {
+      match y {
+        JONil => false,
+        JOCons(yk, yv, yrest) => {
+          match string_compare(xk, yk) {
+            Equal => {
+              match jvalues_equal(xv, yv) {
+                true => jobject_equal(xrest, yrest),
+                false => false,
+              }
+            },
+            _ => false,
+          }
+        },
+      }
+    },
+  }
+}
+
+fn bool_equal(a: Bool, b: Bool) -> Bool ![] {
+  match a {
+    true => b,
+    false => {
+      match b {
+        true => false,
+        false => true,
+      }
+    },
+  }
+}
+
 fn jvalues_equal(x: JValue, y: JValue) -> Bool ![] {
   match x {
+    JObject(xo) => {
+      match y {
+        JObject(yo) => jobject_equal(xo, yo),
+        _ => false,
+      }
+    },
+    JBool(a) => {
+      match y {
+        JBool(b) => bool_equal(a, b),
+        _ => false,
+      }
+    },
     JNull => {
       match y {
         JNull => true,
