@@ -23,6 +23,26 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif self.path == "/cookies":
+            body = b"cookie response"
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.send_header("Set-Cookie", "sessionid=abc123")
+            self.send_header("Set-Cookie", "tracking=xyz789")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/cookies-lower":
+            # Non-canonical header casing: field names are case-insensitive
+            # (RFC 9110), so surl must save this cookie too. send_header
+            # writes the name verbatim.
+            body = b"cookie response"
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.send_header("set-cookie", "lowered=case42")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         elif self.path == "/a":
             # Redirect /a to /b with 302 status
             self.send_response(302)
