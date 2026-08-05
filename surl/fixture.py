@@ -23,6 +23,19 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif self.path == "/cookies":
+            # Send two Set-Cookie headers with DIFFERENT casing to prove the
+            # -c jar saves cookies regardless of header-name capitalization
+            # (HTTP field names are case-insensitive). send_header preserves
+            # the exact casing passed here.
+            body = b"cookie response"
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.send_header("Set-Cookie", "sessionid=abc123")
+            self.send_header("set-cookie", "tracking=xyz789")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         elif self.path == "/a":
             # Redirect /a to /b with 302 status
             self.send_response(302)

@@ -16,7 +16,7 @@ use std.env.{env_args, Env};
 use std.http.{Header, Response};
 use std.int.{int_to_string};
 use std.io.{IO};
-use std.byte_array.{string_from_bytes};
+use std.byte_array.{byte_array_get_opt, byte_to_int, string_from_bytes, string_to_bytes};
 use std.list.{Cons, List, Nil};
 use std.mem.{Mem};
 use std.net.{Net};
@@ -32,6 +32,94 @@ fn print_headers(headers: List[Header]) -> Unit ![IO] {
     Cons(h, rest) => {
       perform IO.println(string_concat(h.name, string_concat(": ", h.value)));
       print_headers(rest)
+    },
+  }
+}
+
+// Integer equality via >=/<= only (no == operator in the pinned toolchain).
+fn int_eq(a: Int, b: Int) -> Bool ![] {
+  match a >= b {
+    true => match a <= b {
+      true => true,
+      false => false,
+    },
+    false => false,
+  }
+}
+
+// Lowercase an ASCII code point ('A'..'Z' -> 'a'..'z'), leaving others intact.
+fn to_lower_int(n: Int) -> Int ![] {
+  match n >= 65 {
+    true => match n <= 90 {
+      true => n + 32,
+      false => n,
+    },
+    false => n,
+  }
+}
+
+// Case-insensitive byte-wise comparison of two ByteArrays. Terminates when
+// both run out together; a length mismatch (one None while the other is Some)
+// is unequal.
+fn ci_match_bytes(a: ByteArray, b: ByteArray, i: Int) -> Bool ![] {
+  match (byte_array_get_opt(a, i), byte_array_get_opt(b, i)) {
+    (None, None) => true,
+    (Some(ba), Some(bb)) => {
+      match int_eq(to_lower_int(byte_to_int(ba)), to_lower_int(byte_to_int(bb))) {
+        true => ci_match_bytes(a, b, i + 1),
+        false => false,
+      }
+    },
+    _ => false,
+  }
+}
+
+// HTTP field names are case-insensitive, so match "Set-Cookie" in any casing
+// (Set-Cookie, set-cookie, SET-COOKIE, ...).
+fn is_set_cookie(name: String) -> Bool ![] {
+  ci_match_bytes(string_to_bytes(name), string_to_bytes("set-cookie"), 0)
+}
+
+// Collect the value of every Set-Cookie response header (case-insensitive).
+fn find_set_cookie_headers(headers: List[Header]) -> List[String] ![] {
+  match headers {
+    Nil => Nil,
+    Cons(h, rest) => {
+      match is_set_cookie(h.name) {
+        true => Cons(h.value, find_set_cookie_headers(rest)),
+        false => find_set_cookie_headers(rest),
+      }
+    },
+  }
+}
+
+// Join strings with a separator (one cookie per line in the jar).
+fn join_strings(strs: List[String], sep: String) -> String ![] {
+  match strs {
+    Nil => "",
+    Cons(h, t) => {
+      match t {
+        Nil => h,
+        _ => string_concat(h, string_concat(sep, join_strings(t, sep))),
+      }
+    },
+  }
+}
+
+// When -c FILE was given (cookie_jar non-empty), write each received
+// Set-Cookie cookie to FILE, one per line. Uses the builtin Fs effect
+// directly (raw op returns (Int, String); 0 = success), matching the -o
+// path in main() and avoiding the std.fs import E0118 collision.
+fn write_cookies_to_jar(cookie_jar: String, resp: Response) -> Unit ![IO, Fs] {
+  match string_compare(cookie_jar, "") {
+    Equal => (),
+    _ => {
+      let cookies: List[String] = find_set_cookie_headers(resp.headers);
+      let cookie_data: String = join_strings(cookies, "\n");
+      match perform Fs.write_file(cookie_jar, cookie_data) {
+        (0, _) => (),
+        (_, _) => perform IO.println("Error: could not write cookies to jar"),
+      }
     },
   }
 }
@@ -56,6 +144,7 @@ fn main() -> Int ![IO, Env, Net, Mem, Fs] {
               1
             },
             Ok((version, resp)) => {
+              write_cookies_to_jar(config.cookie_jar, resp);
               match config.head_only {
                 true => {
                   let status_line: String = string_concat(version, string_concat(" ", string_concat(int_to_string(resp.status), string_concat(" ", resp.reason))));
