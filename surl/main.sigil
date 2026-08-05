@@ -138,6 +138,8 @@ fn main() -> Int ![IO, Env, Net, Mem, Fs] {
                           }
                         },
                       }
+                    },
+                  }
                 },
                 _ => {
                   perform IO.println("Error: could not write cookies to jar");
