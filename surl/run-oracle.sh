@@ -181,6 +181,19 @@ else
   exit 1
 fi
 
+# Test -b (Cookie): check Cookie header is sent correctly
+surl_cookie=$(bin/main -b "sessionid=abc123" "http://127.0.0.1:$port/headers" 2>&1 | grep -i "^Cookie:" || true)
+curl_cookie=$(curl -s -b "sessionid=abc123" "http://127.0.0.1:$port/headers" 2>&1 | grep -i "^Cookie:" || true)
+
+if [ "$surl_cookie" = "$curl_cookie" ]; then
+  echo "✓ surl -b Cookie header matches curl"
+else
+  echo "✗ surl -b Cookie header does not match curl"
+  echo "  surl: '$surl_cookie'"
+  echo "  curl: '$curl_cookie'"
+  exit 1
+fi
+
 # Stop the server with SIGTERM
 kill -TERM $server_pid 2>/dev/null || true
 
