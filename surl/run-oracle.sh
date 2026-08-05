@@ -194,6 +194,24 @@ else
   exit 1
 fi
 
+# Test -c (save cookies to jar): check Set-Cookie headers are saved to file
+jar_file="$tmpdir/cookies.jar"
+bin/main -c "$jar_file" "http://127.0.0.1:$port/cookies" > /dev/null 2>&1
+
+if [ -f "$jar_file" ]; then
+  jar_content=$(cat "$jar_file")
+  if [[ "$jar_content" == *"sessionid=abc123"* ]] && [[ "$jar_content" == *"tracking=xyz789"* ]]; then
+    echo "✓ surl -c saves Set-Cookie headers to jar file"
+  else
+    echo "✗ surl -c jar file does not contain expected cookies"
+    echo "  jar content: '$jar_content'"
+    exit 1
+  fi
+else
+  echo "✗ surl -c did not create jar file"
+  exit 1
+fi
+
 # Stop the server with SIGTERM
 kill -TERM $server_pid 2>/dev/null || true
 

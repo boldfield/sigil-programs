@@ -123,6 +123,23 @@ fn find_cookie(argv: List[String]) -> String ![] {
   }
 }
 
+fn find_cookie_jar(argv: List[String]) -> String ![] {
+  match argv {
+    Nil => "",
+    Cons(arg, rest) => {
+      match string_compare(arg, "-c") {
+        Equal => {
+          match rest {
+            Nil => "",
+            Cons(jar, _) => jar,
+          }
+        },
+        _ => find_cookie_jar(rest),
+      }
+    },
+  }
+}
+
 fn skip_flag_args_acc(argv: List[String], acc: List[String]) -> List[String] ![] {
   match argv {
     Nil => reverse_list_acc(acc, Nil),
@@ -180,7 +197,17 @@ fn skip_flag_args_acc(argv: List[String], acc: List[String]) -> List[String] ![]
                                         Cons(_, rest2) => skip_flag_args_acc(rest2, acc),
                                       }
                                     },
-                                    _ => skip_flag_args_acc(rest, Cons(arg, acc)),
+                                    _ => {
+                                      match string_compare(arg, "-c") {
+                                        Equal => {
+                                          match rest {
+                                            Nil => reverse_list_acc(acc, Nil),
+                                            Cons(_, rest2) => skip_flag_args_acc(rest2, acc),
+                                          }
+                                        },
+                                        _ => skip_flag_args_acc(rest, Cons(arg, acc)),
+                                      }
+                                    },
                                   }
                                 },
                               }
@@ -264,6 +291,7 @@ fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
       let output: String = find_output(argv);
       let user: String = find_user(argv);
       let cookie: String = find_cookie(argv);
+      let cookie_jar: String = find_cookie_jar(argv);
       let head_only: Bool = has_flag(argv, "-I");
       let follow: Bool = has_flag(argv, "-L");
       // -I implies HEAD; -d implies POST; -X overrides all.
@@ -288,7 +316,7 @@ fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
         follow: follow,
         user: user,
         cookie: cookie,
-        cookie_jar: "",
+        cookie_jar: cookie_jar,
         verbose: false,
         insecure: false,
       })

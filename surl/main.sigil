@@ -36,6 +36,44 @@ fn print_headers(headers: List[Header]) -> Unit ![IO] {
   }
 }
 
+fn find_set_cookie_headers(headers: List[Header]) -> List[String] ![] {
+  match headers {
+    Nil => Nil,
+    Cons(h, rest) => {
+      match string_compare(h.name, "Set-Cookie") {
+        Equal => Cons(h.value, find_set_cookie_headers(rest)),
+        _ => find_set_cookie_headers(rest),
+      }
+    },
+  }
+}
+
+fn join_strings(strs: List[String], sep: String) -> String ![] {
+  match strs {
+    Nil => "",
+    Cons(h, t) => {
+      match t {
+        Nil => h,
+        _ => string_concat(h, string_concat(sep, join_strings(t, sep))),
+      }
+    },
+  }
+}
+
+fn write_cookies_to_jar(cookie_jar: String, resp: Response) -> Int ![Fs] {
+  match string_compare(cookie_jar, "") {
+    Equal => 0,
+    _ => {
+      let cookies: List[String] = find_set_cookie_headers(resp.headers);
+      let cookie_data: String = join_strings(cookies, "\n");
+      match perform Fs.write_file(cookie_jar, cookie_data) {
+        (0, _) => 0,
+        (_, _) => 1,
+      }
+    },
+  }
+}
+
 fn main() -> Int ![IO, Env, Net, Mem, Fs] {
   let argv: List[String] = env_args();
   match parse_args(argv) {
@@ -56,47 +94,54 @@ fn main() -> Int ![IO, Env, Net, Mem, Fs] {
               1
             },
             Ok((version, resp)) => {
-              match config.head_only {
-                true => {
-                  let status_line: String = string_concat(version, string_concat(" ", string_concat(int_to_string(resp.status), string_concat(" ", resp.reason))));
-                  perform IO.println(status_line);
-                  print_headers(resp.headers);
-                  0
-                },
-                false => {
-                  match string_from_bytes(resp.body) {
-                    None => {
-                      perform IO.println("Error: invalid UTF-8 in response body");
-                      1
+              let cookie_jar_result: Int = write_cookies_to_jar(config.cookie_jar, resp);
+              match cookie_jar_result {
+                0 => {
+                  match config.head_only {
+                    true => {
+                      let status_line: String = string_concat(version, string_concat(" ", string_concat(int_to_string(resp.status), string_concat(" ", resp.reason))));
+                      perform IO.println(status_line);
+                      print_headers(resp.headers);
+                      0
                     },
-                    Some(body_str) => {
-                      match string_compare(config.output, "") {
-                        Equal => {
-                          // Emit the response body to stdout and terminate
-                          // the line. std.io only exposes println (plain
-                          // print is line-buffered with no flush at exit on
-                          // the pinned toolchain). The oracle accounts for
-                          // the single trailing newline.
-                          perform IO.println(body_str);
-                          0
+                    false => {
+                      match string_from_bytes(resp.body) {
+                        None => {
+                          perform IO.println("Error: invalid UTF-8 in response body");
+                          1
                         },
-                        _ => {
-                          // Write body to file via the builtin Fs effect
-                          // directly. Fs is a builtin (no import needed),
-                          // so this avoids the FsError.Other / NetError.Other
-                          // E0118 collision that importing std.fs would cause.
-                          // The raw op returns (Int, String): 0 = success.
-                          match perform Fs.write_file(config.output, body_str) {
-                            (0, _) => 0,
-                            (_, _) => {
-                              perform IO.println("Error: could not write to file");
-                              1
+                        Some(body_str) => {
+                          match string_compare(config.output, "") {
+                            Equal => {
+                              // Emit the response body to stdout and terminate
+                              // the line. std.io only exposes println (plain
+                              // print is line-buffered with no flush at exit on
+                              // the pinned toolchain). The oracle accounts for
+                              // the single trailing newline.
+                              perform IO.println(body_str);
+                              0
+                            },
+                            _ => {
+                              // Write body to file via the builtin Fs effect
+                              // directly. Fs is a builtin (no import needed),
+                              // so this avoids the FsError.Other / NetError.Other
+                              // E0118 collision that importing std.fs would cause.
+                              // The raw op returns (Int, String): 0 = success.
+                              match perform Fs.write_file(config.output, body_str) {
+                                (0, _) => 0,
+                                (_, _) => {
+                                  perform IO.println("Error: could not write to file");
+                                  1
+                                },
+                              }
                             },
                           }
                         },
                       }
-                    },
-                  }
+                },
+                _ => {
+                  perform IO.println("Error: could not write cookies to jar");
+                  1
                 },
               }
             },
