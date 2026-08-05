@@ -16,12 +16,12 @@ use std.env.{env_args, Env};
 use std.http.{Header, Response};
 use std.int.{int_to_string};
 use std.io.{IO};
-use std.byte_array.{string_from_bytes};
+use std.byte_array.{byte_to_int, string_from_bytes};
 use std.list.{Cons, List, Nil};
 use std.mem.{Mem};
 use std.net.{Net};
 use std.ordering.{Equal};
-use std.string.{string_compare, string_concat};
+use std.string.{string_byte_at_opt, string_compare, string_concat};
 use args.{parse_args};
 use request.{build_request};
 use fetch.{fetch};
@@ -32,6 +32,82 @@ fn print_headers(headers: List[Header]) -> Unit ![IO] {
     Cons(h, rest) => {
       perform IO.println(string_concat(h.name, string_concat(": ", h.value)));
       print_headers(rest)
+    },
+  }
+}
+
+// Fold ASCII uppercase (65-90) down to lowercase so header-name comparison
+// is case-insensitive, since HTTP field names are case-insensitive but
+// std.http preserves the casing the server actually sent.
+fn ascii_lower_byte(n: Int) -> Int ![] {
+  match n >= 65 {
+    true => match n <= 90 {
+      true => n + 32,
+      false => n,
+    },
+    false => n,
+  }
+}
+
+fn string_ci_equal_from(a: String, b: String, i: Int) -> Bool ![] {
+  match string_byte_at_opt(a, i) {
+    None => match string_byte_at_opt(b, i) {
+      None => true,
+      Some(_) => false,
+    },
+    Some(ba) => match string_byte_at_opt(b, i) {
+      None => false,
+      Some(bb) => match ascii_lower_byte(byte_to_int(ba)) == ascii_lower_byte(byte_to_int(bb)) {
+        true => string_ci_equal_from(a, b, i + 1),
+        false => false,
+      },
+    },
+  }
+}
+
+fn string_ci_equal(a: String, b: String) -> Bool ![] {
+  string_ci_equal_from(a, b, 0)
+}
+
+fn find_set_cookie_headers(headers: List[Header]) -> List[String] ![] {
+  match headers {
+    Nil => Nil,
+    Cons(h, rest) => {
+      match string_ci_equal(h.name, "Set-Cookie") {
+        true => Cons(h.value, find_set_cookie_headers(rest)),
+        false => find_set_cookie_headers(rest),
+      }
+    },
+  }
+}
+
+fn join_lines(strs: List[String]) -> String ![] {
+  match strs {
+    Nil => "",
+    Cons(h, t) => {
+      match t {
+        Nil => h,
+        _ => string_concat(h, string_concat("\n", join_lines(t))),
+      }
+    },
+  }
+}
+
+// Write each Set-Cookie header's value to the jar file, one per line.
+// No-op when cookie_jar is empty (i.e. -c was not passed). Uses the raw
+// builtin Fs effect directly (see the -o write below) rather than
+// importing std.fs, to avoid the FsError.Other / NetError.Other E0118
+// collision that importing std.fs would cause alongside std.net.
+fn write_cookies_to_jar(cookie_jar: String, resp: Response) -> Unit ![Fs] {
+  match string_compare(cookie_jar, "") {
+    Equal => (),
+    _ => {
+      let cookies: List[String] = find_set_cookie_headers(resp.headers);
+      let cookie_data: String = join_lines(cookies);
+      match perform Fs.write_file(cookie_jar, cookie_data) {
+        (0, _) => (),
+        (_, _) => (),
+      }
     },
   }
 }
@@ -56,6 +132,7 @@ fn main() -> Int ![IO, Env, Net, Mem, Fs] {
               1
             },
             Ok((version, resp)) => {
+              let _: Unit = write_cookies_to_jar(config.cookie_jar, resp);
               match config.head_only {
                 true => {
                   let status_line: String = string_concat(version, string_concat(" ", string_concat(int_to_string(resp.status), string_concat(" ", resp.reason))));
