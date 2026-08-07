@@ -52,7 +52,7 @@ fn verbose_headers_string(headers: List[Header], prefix: String) -> String ![] {
   }
 }
 
-fn print_verbose_request(req: Request) -> Int ![Fs] {
+fn verbose_request_string(req: Request) -> String ![] {
   let method: String = req.method;
   let path: String = req.url.path;
   let query: String = req.url.query;
@@ -62,18 +62,17 @@ fn print_verbose_request(req: Request) -> Int ![Fs] {
   };
   let request_line: String = string_concat("> ", string_concat(method, string_concat(" ", string_concat(request_path, " HTTP/1.1\n"))));
   let headers_str: String = verbose_headers_string(req.headers, "> ");
-  let verbose_output: String = string_concat(request_line, string_concat(headers_str, "\n"));
-  match perform Fs.write_file("/dev/stderr", verbose_output) {
-    (0, _) => 0,
-    (_, _) => 0,
-  }
+  string_concat(request_line, string_concat(headers_str, "\n"))
 }
 
-fn print_verbose_response(version: String, resp: Response) -> Int ![Fs] {
+fn verbose_response_string(version: String, resp: Response) -> String ![] {
   let status_line: String = string_concat("< ", string_concat(version, string_concat(" ", string_concat(int_to_string(resp.status), string_concat(" ", string_concat(resp.reason, "\n"))))));
   let headers_str: String = verbose_headers_string(resp.headers, "< ");
-  let verbose_output: String = string_concat(status_line, string_concat(headers_str, "\n"));
-  match perform Fs.write_file("/dev/stderr", verbose_output) {
+  string_concat(status_line, string_concat(headers_str, "\n"))
+}
+
+fn print_verbose(output: String) -> Int ![Fs] {
+  match perform Fs.write_file("/dev/stderr", output) {
     (0, _) => 0,
     (_, _) => 0,
   }
@@ -186,9 +185,9 @@ fn main() -> Int ![IO, Env, Net, Mem, Fs] {
           1
         },
         Ok(req) => {
-          let _: Int = match config.verbose {
-            true => print_verbose_request(req),
-            false => 0,
+          let verbose_request: String = match config.verbose {
+            true => verbose_request_string(req),
+            false => "",
           };
           match fetch(req, config.head_only, config.follow) {
             Err(err_msg) => {
@@ -196,8 +195,12 @@ fn main() -> Int ![IO, Env, Net, Mem, Fs] {
               1
             },
             Ok((version, resp)) => {
+              let verbose_response: String = match config.verbose {
+                true => verbose_response_string(version, resp),
+                false => "",
+              };
               let _: Int = match config.verbose {
-                true => print_verbose_response(version, resp),
+                true => print_verbose(string_concat(verbose_request, verbose_response)),
                 false => 0,
               };
               match string_compare(config.cookie_jar, "") {
