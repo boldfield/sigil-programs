@@ -194,6 +194,37 @@ else
   exit 1
 fi
 
+# Test -c (save cookies to jar): Set-Cookie headers are saved to file, one per line
+jar_file="$tmpdir/cookies.jar"
+bin/main -c "$jar_file" "http://127.0.0.1:$port/cookies" > /dev/null
+
+if [ ! -f "$jar_file" ]; then
+  echo "✗ surl -c did not create jar file"
+  exit 1
+fi
+jar_content=$(cat "$jar_file")
+if [[ "$jar_content" == *"sessionid=abc123"* ]] && [[ "$jar_content" == *"tracking=xyz789"* ]]; then
+  echo "✓ surl -c saves Set-Cookie headers to jar file"
+else
+  echo "✗ surl -c jar file does not contain expected cookies"
+  echo "  jar content: '$jar_content'"
+  exit 1
+fi
+
+# Test -c with non-canonical header casing: a lowercase set-cookie response
+# header must be saved too (HTTP field names are case-insensitive).
+jar_file_lower="$tmpdir/cookies-lower.jar"
+bin/main -c "$jar_file_lower" "http://127.0.0.1:$port/cookies-lower" > /dev/null
+
+jar_lower_content=$(cat "$jar_file_lower" 2>/dev/null || true)
+if [[ "$jar_lower_content" == *"lowered=case42"* ]]; then
+  echo "✓ surl -c saves lowercase set-cookie header to jar file"
+else
+  echo "✗ surl -c jar file does not contain cookie from lowercase set-cookie header"
+  echo "  jar content: '$jar_lower_content'"
+  exit 1
+fi
+
 # Stop the server with SIGTERM
 kill -TERM $server_pid 2>/dev/null || true
 

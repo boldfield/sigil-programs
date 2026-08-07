@@ -1,3 +1,4 @@
+import std.char
 import std.env
 import std.http
 import std.int
@@ -12,6 +13,7 @@ import args
 import request
 import fetch
 
+use std.char.{to_lower_ascii};
 use std.env.{env_args, Env};
 use std.http.{Header, Response};
 use std.int.{int_to_string};
@@ -21,8 +23,8 @@ use std.list.{Cons, List, Nil};
 use std.mem.{Mem};
 use std.net.{Net};
 use std.ordering.{Equal};
-use std.string.{string_compare, string_concat};
-use args.{parse_args};
+use std.string.{string_compare, string_concat, string_chars, string_from_chars};
+use args.{parse_args, Config};
 use request.{build_request};
 use fetch.{fetch};
 
@@ -32,6 +34,99 @@ fn print_headers(headers: List[Header]) -> Unit ![IO] {
     Cons(h, rest) => {
       perform IO.println(string_concat(h.name, string_concat(": ", h.value)));
       print_headers(rest)
+    },
+  }
+}
+
+fn lower_ascii_chars(cs: List[Char]) -> List[Char] ![] {
+  match cs {
+    Nil => Nil,
+    Cons(c, rest) => Cons(to_lower_ascii(c), lower_ascii_chars(rest)),
+  }
+}
+
+fn lower_ascii(s: String) -> String ![] {
+  string_from_chars(lower_ascii_chars(string_chars(s)))
+}
+
+// HTTP field names are case-insensitive (RFC 9110 §5.1), and the
+// response parser preserves the casing the server sent — so match
+// against the ASCII-lowercased name.
+fn find_set_cookie_headers(headers: List[Header]) -> List[String] ![] {
+  match headers {
+    Nil => Nil,
+    Cons(h, rest) => {
+      match string_compare(lower_ascii(h.name), "set-cookie") {
+        Equal => Cons(h.value, find_set_cookie_headers(rest)),
+        _ => find_set_cookie_headers(rest),
+      }
+    },
+  }
+}
+
+// One cookie per line, each line newline-terminated.
+fn cookie_lines(cookies: List[String]) -> String ![] {
+  match cookies {
+    Nil => "",
+    Cons(c, rest) => string_concat(c, string_concat("\n", cookie_lines(rest))),
+  }
+}
+
+// Write every Set-Cookie value from the response to the jar file.
+// Uses the builtin Fs effect's raw op directly (same rationale as the
+// -o path below: importing std.fs would collide FsError.Other with
+// NetError.Other, E0118). The raw op returns (Int, String): 0 = success.
+fn write_cookies_to_jar(cookie_jar: String, resp: Response) -> Int ![Fs] {
+  let cookies: List[String] = find_set_cookie_headers(resp.headers);
+  let cookie_data: String = cookie_lines(cookies);
+  match perform Fs.write_file(cookie_jar, cookie_data) {
+    (0, _) => 0,
+    (_, _) => 1,
+  }
+}
+
+fn handle_response(config: Config, version: String, resp: Response) -> Int ![IO, Fs] {
+  match config.head_only {
+    true => {
+      let status_line: String = string_concat(version, string_concat(" ", string_concat(int_to_string(resp.status), string_concat(" ", resp.reason))));
+      perform IO.println(status_line);
+      print_headers(resp.headers);
+      0
+    },
+    false => {
+      match string_from_bytes(resp.body) {
+        None => {
+          perform IO.println("Error: invalid UTF-8 in response body");
+          1
+        },
+        Some(body_str) => {
+          match string_compare(config.output, "") {
+            Equal => {
+              // Emit the response body to stdout and terminate
+              // the line. std.io only exposes println (plain
+              // print is line-buffered with no flush at exit on
+              // the pinned toolchain). The oracle accounts for
+              // the single trailing newline.
+              perform IO.println(body_str);
+              0
+            },
+            _ => {
+              // Write body to file via the builtin Fs effect
+              // directly. Fs is a builtin (no import needed),
+              // so this avoids the FsError.Other / NetError.Other
+              // E0118 collision that importing std.fs would cause.
+              // The raw op returns (Int, String): 0 = success.
+              match perform Fs.write_file(config.output, body_str) {
+                (0, _) => 0,
+                (_, _) => {
+                  perform IO.println("Error: could not write to file");
+                  1
+                },
+              }
+            },
+          }
+        },
+      }
     },
   }
 }
@@ -56,45 +151,14 @@ fn main() -> Int ![IO, Env, Net, Mem, Fs] {
               1
             },
             Ok((version, resp)) => {
-              match config.head_only {
-                true => {
-                  let status_line: String = string_concat(version, string_concat(" ", string_concat(int_to_string(resp.status), string_concat(" ", resp.reason))));
-                  perform IO.println(status_line);
-                  print_headers(resp.headers);
-                  0
-                },
-                false => {
-                  match string_from_bytes(resp.body) {
-                    None => {
-                      perform IO.println("Error: invalid UTF-8 in response body");
+              match string_compare(config.cookie_jar, "") {
+                Equal => handle_response(config, version, resp),
+                _ => {
+                  match write_cookies_to_jar(config.cookie_jar, resp) {
+                    0 => handle_response(config, version, resp),
+                    _ => {
+                      perform IO.println("Error: could not write cookies to jar");
                       1
-                    },
-                    Some(body_str) => {
-                      match string_compare(config.output, "") {
-                        Equal => {
-                          // Emit the response body to stdout and terminate
-                          // the line. std.io only exposes println (plain
-                          // print is line-buffered with no flush at exit on
-                          // the pinned toolchain). The oracle accounts for
-                          // the single trailing newline.
-                          perform IO.println(body_str);
-                          0
-                        },
-                        _ => {
-                          // Write body to file via the builtin Fs effect
-                          // directly. Fs is a builtin (no import needed),
-                          // so this avoids the FsError.Other / NetError.Other
-                          // E0118 collision that importing std.fs would cause.
-                          // The raw op returns (Int, String): 0 = success.
-                          match perform Fs.write_file(config.output, body_str) {
-                            (0, _) => 0,
-                            (_, _) => {
-                              perform IO.println("Error: could not write to file");
-                              1
-                            },
-                          }
-                        },
-                      }
                     },
                   }
                 },
