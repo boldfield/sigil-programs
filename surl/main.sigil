@@ -38,6 +38,46 @@ fn print_headers(headers: List[Header]) -> Unit ![IO] {
   }
 }
 
+fn verbose_header_line(prefix: String, name: String, value: String) -> String ![] {
+  string_concat(prefix, string_concat(name, string_concat(": ", value)))
+}
+
+fn verbose_headers_string(headers: List[Header], prefix: String) -> String ![] {
+  match headers {
+    Nil => "",
+    Cons(h, rest) => {
+      let line: String = verbose_header_line(prefix, h.name, h.value);
+      string_concat(line, string_concat("\n", verbose_headers_string(rest, prefix)))
+    },
+  }
+}
+
+fn verbose_request_string(req: Request) -> String ![] {
+  let method: String = req.method;
+  let path: String = req.url.path;
+  let query: String = req.url.query;
+  let request_path: String = match string_compare(query, "") {
+    Equal => path,
+    _ => string_concat(path, string_concat("?", query)),
+  };
+  let request_line: String = string_concat("> ", string_concat(method, string_concat(" ", string_concat(request_path, " HTTP/1.1\n"))));
+  let headers_str: String = verbose_headers_string(req.headers, "> ");
+  string_concat(request_line, string_concat(headers_str, "\n"))
+}
+
+fn verbose_response_string(version: String, resp: Response) -> String ![] {
+  let status_line: String = string_concat("< ", string_concat(version, string_concat(" ", string_concat(int_to_string(resp.status), string_concat(" ", string_concat(resp.reason, "\n"))))));
+  let headers_str: String = verbose_headers_string(resp.headers, "< ");
+  string_concat(status_line, string_concat(headers_str, "\n"))
+}
+
+fn print_verbose(output: String) -> Int ![Fs] {
+  match perform Fs.write_file("/dev/stderr", output) {
+    (0, _) => 0,
+    (_, _) => 0,
+  }
+}
+
 fn lower_ascii_chars(cs: List[Char]) -> List[Char] ![] {
   match cs {
     Nil => Nil,
@@ -145,12 +185,24 @@ fn main() -> Int ![IO, Env, Net, Mem, Fs] {
           1
         },
         Ok(req) => {
+          let verbose_request: String = match config.verbose {
+            true => verbose_request_string(req),
+            false => "",
+          };
           match fetch(req, config.head_only, config.follow) {
             Err(err_msg) => {
               perform IO.println(err_msg);
               1
             },
             Ok((version, resp)) => {
+              let verbose_response: String = match config.verbose {
+                true => verbose_response_string(version, resp),
+                false => "",
+              };
+              let _: Int = match config.verbose {
+                true => print_verbose(string_concat(verbose_request, verbose_response)),
+                false => 0,
+              };
               match string_compare(config.cookie_jar, "") {
                 Equal => handle_response(config, version, resp),
                 _ => {
