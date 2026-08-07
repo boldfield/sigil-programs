@@ -1,7 +1,7 @@
 # CLAUDE.md — sigil-programs
 
 Programs written in the **Sigil** language, built against the Sigil
-**v1.2.0** release toolchain.
+**v1.4.2** release toolchain.
 
 ## Before writing or reviewing any code — read the Sigil docs
 
@@ -18,7 +18,7 @@ the relevant section rather than guessing.
 
 ## Build / test
 
-`sigil` is on PATH in CI (the pinned v1.2.0 release; locally pass
+`sigil` is on PATH in CI (the pinned v1.4.2 release; locally pass
 `make SIGIL=/path/to/bin/sigil`). Use the Makefile:
 
 - `make <program>` / `make test-<program>` — build / test one program.
