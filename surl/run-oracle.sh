@@ -225,6 +225,43 @@ else
   exit 1
 fi
 
+# Test -v (verbose: request/response headers to stderr, body to stdout unchanged)
+stderr_file="$tmpdir/verbose_stderr.out"
+stdout_file="$tmpdir/verbose_stdout.out"
+
+bin/main -v "http://127.0.0.1:$port/test.txt" >"$stdout_file" 2>"$stderr_file"
+
+# Check that body is on stdout (unchanged)
+stdout_content=$(cat "$stdout_file")
+expected_body=$(curl -s "http://127.0.0.1:$port/test.txt")
+if [ "$stdout_content" = "$expected_body" ]; then
+  echo "✓ surl -v body on stdout unchanged"
+else
+  echo "✗ surl -v body on stdout not as expected"
+  echo "  expected: '$expected_body'"
+  echo "  got:      '$stdout_content'"
+  exit 1
+fi
+
+# Check that stderr contains verbose markers (> for request, < for response)
+stderr_content=$(cat "$stderr_file")
+if [[ "$stderr_content" == *">"* ]] && [[ "$stderr_content" == *"<"* ]]; then
+  echo "✓ surl -v has verbose output on stderr (> and < prefixes)"
+else
+  echo "✗ surl -v missing verbose markers on stderr"
+  echo "  stderr: '$stderr_content'"
+  exit 1
+fi
+
+# Check that request line is present (GET ... HTTP/1.1)
+if [[ "$stderr_content" == *"GET"* ]] && [[ "$stderr_content" == *"HTTP/1.1"* ]]; then
+  echo "✓ surl -v has request line with method and HTTP version"
+else
+  echo "✗ surl -v missing request line"
+  echo "  stderr: '$stderr_content'"
+  exit 1
+fi
+
 # Stop the server with SIGTERM
 kill -TERM $server_pid 2>/dev/null || true
 
