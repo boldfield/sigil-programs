@@ -3,7 +3,7 @@ set -e
 
 # Create a temp directory with a test file
 tmpdir=$(mktemp -d)
-trap 'rm -rf $tmpdir; kill $server_pid 2>/dev/null || true' EXIT
+trap 'rm -rf $tmpdir; kill $server_pid $server10_pid 2>/dev/null || true' EXIT
 
 echo "test content" > "$tmpdir/test.txt"
 
@@ -26,8 +26,29 @@ if [ -z "$port" ]; then
   exit 1
 fi
 
+# Start a second fixture server instance that advertises HTTP/1.0, serving
+# the same directory. It closes the connection after every response (the
+# legitimate close-delimited framing), used below for the differential
+# HTTP/1.1-vs-HTTP/1.0 test and the close-delimited fallback test.
+portfile10=$(mktemp)
+python3 surl/fixture.py "$tmpdir" "HTTP/1.0" > "$portfile10" 2>&1 &
+server10_pid=$!
+
+for i in {1..50}; do
+  if [ -s "$portfile10" ]; then
+    port10=$(cat "$portfile10")
+    break
+  fi
+  sleep 0.01
+done
+
+if [ -z "$port10" ]; then
+  echo "Failed to get port from HTTP/1.0 fixture server"
+  exit 1
+fi
+
 # Fetch with surl
-surl_response=$(bin/main "http://127.0.0.1:$port/test.txt")
+surl_response=$(timeout 10 bin/main "http://127.0.0.1:$port/test.txt")
 
 # Fetch with curl for comparison
 curl_response=$(curl -s "http://127.0.0.1:$port/test.txt")
@@ -42,8 +63,57 @@ else
   exit 1
 fi
 
+# Test chunked response: Transfer-Encoding: chunked must be read to the
+# terminating zero-length chunk, not to connection close.
+surl_chunked=$(timeout 10 bin/main "http://127.0.0.1:$port/chunked")
+curl_chunked=$(curl -s "http://127.0.0.1:$port/chunked")
+
+if [ "$surl_chunked" = "$curl_chunked" ]; then
+  echo "✓ surl chunked response matches curl"
+else
+  echo "✗ surl chunked response does not match curl"
+  echo "  surl: '$surl_chunked'"
+  echo "  curl: '$curl_chunked'"
+  exit 1
+fi
+
+# Test close-delimited response (no Content-Length, not chunked) against
+# the HTTP/1.0 server: the only legitimate way to delimit this body is the
+# connection closing, and surl must still return rather than hang.
+surl_close_delim=$(timeout 10 bin/main "http://127.0.0.1:$port10/close-delim")
+curl_close_delim=$(curl -s "http://127.0.0.1:$port10/close-delim")
+
+if [ "$surl_close_delim" = "$curl_close_delim" ]; then
+  echo "✓ surl HTTP/1.0 close-delimited response matches curl"
+else
+  echo "✗ surl HTTP/1.0 close-delimited response does not match curl"
+  echo "  surl: '$surl_close_delim'"
+  echo "  curl: '$curl_close_delim'"
+  exit 1
+fi
+
+# Differential test: the same binary, the same body, differing only in the
+# server's advertised protocol version. This is the exact reproduction
+# that exposed the HTTP/1.1 keep-alive hang (see
+# docs/fixes/surl-http11-keepalive-hang.md) — the HTTP/1.0 server closes
+# after every response and always worked, while the HTTP/1.1 server keeps
+# the connection open and used to hang forever. Both must return and match
+# curl's body.
+surl_11=$(timeout 10 bin/main "http://127.0.0.1:$port/test.txt")
+surl_10=$(timeout 10 bin/main "http://127.0.0.1:$port10/test.txt")
+
+if [ "$surl_11" = "$curl_response" ] && [ "$surl_10" = "$curl_response" ]; then
+  echo "✓ surl matches curl against both an HTTP/1.1 keep-alive server and an HTTP/1.0 close-delimited server"
+else
+  echo "✗ surl differential HTTP/1.1 vs HTTP/1.0 test failed"
+  echo "  HTTP/1.1: '$surl_11'"
+  echo "  HTTP/1.0: '$surl_10'"
+  echo "  expected: '$curl_response'"
+  exit 1
+fi
+
 # Test -X POST (POST to /test.txt returns same content as GET)
-surl_post=$(bin/main -X POST "http://127.0.0.1:$port/test.txt" 2>&1)
+surl_post=$(timeout 10 bin/main -X POST "http://127.0.0.1:$port/test.txt" 2>&1)
 curl_post=$(curl -s -X POST "http://127.0.0.1:$port/test.txt" 2>&1)
 
 if [ "$surl_post" = "$curl_post" ]; then
@@ -56,7 +126,7 @@ else
 fi
 
 # Test -H header
-surl_header=$(bin/main -H "X-Custom: test-value" "http://127.0.0.1:$port/headers" 2>&1 | grep -i "x-custom" || true)
+surl_header=$(timeout 10 bin/main -H "X-Custom: test-value" "http://127.0.0.1:$port/headers" 2>&1 | grep -i "x-custom" || true)
 curl_header=$(curl -s -H "X-Custom: test-value" "http://127.0.0.1:$port/headers" 2>&1 | grep -i "x-custom" || true)
 
 if [ "$surl_header" = "$curl_header" ]; then
@@ -81,7 +151,7 @@ fi
 # main.sigil). So the expected bytes are curl's body PLUS one "\n"; append it
 # to curl's capture before comparing. This still catches a missing/empty body,
 # a duplicated body, or any spurious extra bytes.
-bin/main -d "hello world" "http://127.0.0.1:$port/echo" > "$tmpdir/surl_d.out"
+timeout 10 bin/main -d "hello world" "http://127.0.0.1:$port/echo" > "$tmpdir/surl_d.out"
 curl -s -d "hello world" "http://127.0.0.1:$port/echo" > "$tmpdir/curl_d.out"
 printf '\n' >> "$tmpdir/curl_d.out"
 
@@ -96,7 +166,7 @@ fi
 
 # Test -I (HEAD: compare status line and Content-type header value to curl)
 # Use tr -d '\r' to strip carriage returns from curl's CRLF-terminated output.
-surl_head=$(bin/main -I "http://127.0.0.1:$port/test.txt")
+surl_head=$(timeout 10 bin/main -I "http://127.0.0.1:$port/test.txt")
 curl_head=$(curl -sI "http://127.0.0.1:$port/test.txt" | tr -d '\r')
 
 surl_status=$(echo "$surl_head" | head -1)
@@ -126,7 +196,7 @@ fi
 # Test -o FILE: body written to file, nothing on stdout
 outfile="$tmpdir/surl_o.out"
 curl_body=$(curl -s "http://127.0.0.1:$port/test.txt")
-stdout_capture=$(bin/main -o "$outfile" "http://127.0.0.1:$port/test.txt")
+stdout_capture=$(timeout 10 bin/main -o "$outfile" "http://127.0.0.1:$port/test.txt")
 
 if [ -n "$stdout_capture" ]; then
   echo "✗ surl -o produced stdout output: '$stdout_capture'"
@@ -144,7 +214,7 @@ else
 fi
 
 # Test -L (follow redirects): without -L, should get 302; with -L, should reach final target
-surl_no_follow=$(bin/main "http://127.0.0.1:$port/a" 2>&1)
+surl_no_follow=$(timeout 10 bin/main "http://127.0.0.1:$port/a" 2>&1)
 curl_no_follow=$(curl -s "http://127.0.0.1:$port/a" 2>&1)
 
 if [ "$surl_no_follow" = "$curl_no_follow" ]; then
@@ -156,7 +226,7 @@ else
   exit 1
 fi
 
-surl_follow=$(bin/main -L "http://127.0.0.1:$port/a" 2>&1)
+surl_follow=$(timeout 10 bin/main -L "http://127.0.0.1:$port/a" 2>&1)
 curl_follow=$(curl -sL "http://127.0.0.1:$port/a" 2>&1)
 
 if [ "$surl_follow" = "$curl_follow" ]; then
@@ -169,7 +239,7 @@ else
 fi
 
 # Test -u (Basic auth): check Authorization header is sent correctly
-surl_auth=$(bin/main -u "user:password" "http://127.0.0.1:$port/headers" 2>&1 | grep -i "^Authorization:" || true)
+surl_auth=$(timeout 10 bin/main -u "user:password" "http://127.0.0.1:$port/headers" 2>&1 | grep -i "^Authorization:" || true)
 curl_auth=$(curl -s -u "user:password" "http://127.0.0.1:$port/headers" 2>&1 | grep -i "^Authorization:" || true)
 
 if [ "$surl_auth" = "$curl_auth" ]; then
@@ -182,7 +252,7 @@ else
 fi
 
 # Test -b (Cookie): check Cookie header is sent correctly
-surl_cookie=$(bin/main -b "sessionid=abc123" "http://127.0.0.1:$port/headers" 2>&1 | grep -i "^Cookie:" || true)
+surl_cookie=$(timeout 10 bin/main -b "sessionid=abc123" "http://127.0.0.1:$port/headers" 2>&1 | grep -i "^Cookie:" || true)
 curl_cookie=$(curl -s -b "sessionid=abc123" "http://127.0.0.1:$port/headers" 2>&1 | grep -i "^Cookie:" || true)
 
 if [ "$surl_cookie" = "$curl_cookie" ]; then
@@ -196,7 +266,7 @@ fi
 
 # Test -c (save cookies to jar): Set-Cookie headers are saved to file, one per line
 jar_file="$tmpdir/cookies.jar"
-bin/main -c "$jar_file" "http://127.0.0.1:$port/cookies" > /dev/null
+timeout 10 bin/main -c "$jar_file" "http://127.0.0.1:$port/cookies" > /dev/null
 
 if [ ! -f "$jar_file" ]; then
   echo "✗ surl -c did not create jar file"
@@ -214,7 +284,7 @@ fi
 # Test -c with non-canonical header casing: a lowercase set-cookie response
 # header must be saved too (HTTP field names are case-insensitive).
 jar_file_lower="$tmpdir/cookies-lower.jar"
-bin/main -c "$jar_file_lower" "http://127.0.0.1:$port/cookies-lower" > /dev/null
+timeout 10 bin/main -c "$jar_file_lower" "http://127.0.0.1:$port/cookies-lower" > /dev/null
 
 jar_lower_content=$(cat "$jar_file_lower" 2>/dev/null || true)
 if [[ "$jar_lower_content" == *"lowered=case42"* ]]; then
@@ -229,7 +299,7 @@ fi
 stderr_file="$tmpdir/verbose_stderr.out"
 stdout_file="$tmpdir/verbose_stdout.out"
 
-bin/main -v "http://127.0.0.1:$port/test.txt" >"$stdout_file" 2>"$stderr_file"
+timeout 10 bin/main -v "http://127.0.0.1:$port/test.txt" >"$stdout_file" 2>"$stderr_file"
 
 # Check that body is on stdout (unchanged)
 stdout_content=$(cat "$stdout_file")
@@ -261,6 +331,10 @@ else
   echo "  stderr: '$stderr_content'"
   exit 1
 fi
+
+# Stop the HTTP/1.0 server (no graceful-shutdown assertion needed for it;
+# the trap on EXIT also covers it as a backstop)
+kill -TERM $server10_pid 2>/dev/null || true
 
 # Stop the server with SIGTERM
 kill -TERM $server_pid 2>/dev/null || true

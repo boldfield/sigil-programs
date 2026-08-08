@@ -17,11 +17,11 @@ import std.ordering
 import std.result
 import std.string
 import std.url
-use std.byte_array.{byte_array_get_opt, byte_array_slice_opt, byte_to_int, string_from_bytes, string_to_bytes};
-use std.http.{Header, Request, Response, parse_response, parse_status_line, serialize_request};
+use std.byte_array.{byte_array_concat, byte_array_empty, byte_array_get_opt, byte_array_length, byte_array_slice, byte_array_slice_opt, byte_to_int, string_from_bytes, string_to_bytes};
+use std.http.{Header, Request, Response, find_content_length, find_transfer_encoding_chunked, find_blank_line, parse_chunked_body, parse_response, parse_status_line, serialize_request};
 use std.list.{Cons, List, Nil};
 use std.mem.{Mem};
-use std.net.{Closed, Conn, ConnectionRefused, NetError, Other, ResolveFailed, TlsError, close, connect, recv_all, send};
+use std.net.{Closed, Conn, ConnectionRefused, NetError, Other, ResolveFailed, TlsError, close, connect, recv, send};
 use std.ordering.{Equal, string_compare};
 use std.result.{Err, Ok, Result};
 use std.string.{string_split};
@@ -155,12 +155,110 @@ fn parse_head_response(raw: ByteArray) -> Result[Response, String] ![Mem] {
   }
 }
 
-// fetch_single: connect, send the serialized request, read the full response,
-// close, and return the HTTP version plus the parsed Response. The
-// connection is closed on every exit path. Net/parse errors are surfaced
-// as a String. Pass head=true for HEAD requests: parse_response is
-// skipped in favour of parse_head_response, which does not require body
-// bytes even when Content-Length is non-zero.
+// Read from the connection, accumulating chunks onto `acc`, until the
+// blank-line CRLFCRLF terminator std.http.find_blank_line looks for is
+// present. Returns the accumulated bytes (headers plus whatever body
+// prefix happened to arrive in the same reads) and the blank-line
+// position, or an error if the peer closes before headers are complete.
+// This is the piece the old recv_all-to-EOF strategy lacked: it lets the
+// caller stop reading as soon as it knows enough to apply the response's
+// own framing, instead of waiting for the peer to hang up.
+fn recv_headers(conn: Conn, acc: ByteArray) -> Result[(ByteArray, Int), String] ![Net, Mem] {
+  match find_blank_line(acc) {
+    -1 => match recv(conn, 65536) {
+      Err(e) => Err(net_error_to_string(e)),
+      Ok(chunk) => match byte_array_length(chunk) == 0 {
+        true => Err("connection closed before response headers were complete"),
+        false => recv_headers(conn, byte_array_concat(acc, chunk)),
+      },
+    },
+    blank_pos => Ok((acc, blank_pos)),
+  }
+}
+
+// Keep reading until `acc` holds at least `target` bytes (headers plus a
+// full Content-Length body), or the peer closes early.
+fn recv_until_length(conn: Conn, acc: ByteArray, target: Int) -> Result[ByteArray, String] ![Net] {
+  match byte_array_length(acc) >= target {
+    true => Ok(acc),
+    false => match recv(conn, 65536) {
+      Err(e) => Err(net_error_to_string(e)),
+      Ok(chunk) => match byte_array_length(chunk) == 0 {
+        true => Err("connection closed before Content-Length body was complete"),
+        false => recv_until_length(conn, byte_array_concat(acc, chunk), target),
+      },
+    },
+  }
+}
+
+// Keep reading until std.http's own chunk parser can reassemble a full
+// body from `body_start` onward (it returns Err while the terminating
+// zero-length chunk hasn't arrived yet), or the peer closes early.
+fn recv_until_chunked_complete(conn: Conn, acc: ByteArray, body_start: Int) -> Result[ByteArray, String] ![Net, Mem] {
+  match parse_chunked_body(acc, body_start) {
+    Ok(_) => Ok(acc),
+    Err(_) => match recv(conn, 65536) {
+      Err(e) => Err(net_error_to_string(e)),
+      Ok(chunk) => match byte_array_length(chunk) == 0 {
+        true => Err("connection closed before chunked body was complete"),
+        false => recv_until_chunked_complete(conn, byte_array_concat(acc, chunk), body_start),
+      },
+    },
+  }
+}
+
+// Read to end-of-connection: the legitimate fallback when the response
+// carries neither Content-Length nor Transfer-Encoding: chunked, so the
+// peer closing is the only signal the body is complete.
+fn recv_to_eof(conn: Conn, acc: ByteArray) -> Result[ByteArray, String] ![Net] {
+  match recv(conn, 65536) {
+    Err(e) => Err(net_error_to_string(e)),
+    Ok(chunk) => match byte_array_length(chunk) == 0 {
+      true => Ok(acc),
+      false => recv_to_eof(conn, byte_array_concat(acc, chunk)),
+    },
+  }
+}
+
+// Read and assemble the response body for a non-HEAD request, honouring
+// whichever framing the already-parsed headers declare. For
+// Content-Length and chunked framing, std.http.parse_response is reused
+// once enough bytes are buffered so body extraction stays in one place.
+// For the close-delimited fallback (neither framing present),
+// parse_response leaves the body empty (it has no way to know where the
+// body ends other than being told), so that one case is assembled here
+// from the headers already parsed plus everything read to EOF.
+fn fetch_body(conn: Conn, head_resp: Response, acc: ByteArray, body_start: Int) -> Result[Response, String] ![Net, Mem] {
+  match find_transfer_encoding_chunked(head_resp.headers) {
+    true => match recv_until_chunked_complete(conn, acc, body_start) {
+      Err(e) => Err(e),
+      Ok(full) => parse_response(full),
+    },
+    false => match find_content_length(head_resp.headers) {
+      Some(len) => match recv_until_length(conn, acc, body_start + len) {
+        Err(e) => Err(e),
+        Ok(full) => parse_response(full),
+      },
+      None => match recv_to_eof(conn, acc) {
+        Err(e) => Err(e),
+        Ok(full) => Ok(Response {
+          status: head_resp.status,
+          reason: head_resp.reason,
+          headers: head_resp.headers,
+          body: byte_array_slice(full, body_start, byte_array_length(full)),
+        }),
+      },
+    },
+  }
+}
+
+// fetch_single: connect, send the serialized request, read only as much of
+// the response as its own framing requires, close, and return the HTTP
+// version plus the parsed Response. The connection is closed on every
+// exit path. Net/parse errors are surfaced as a String. Pass head=true
+// for HEAD requests: the read stops once headers are buffered and
+// parse_head_response is used instead of parse_response, since a HEAD
+// response may advertise a non-zero Content-Length while sending no body.
 fn fetch_single(req: Request, head: Bool) -> Result[(String, Response), String] ![Net, Mem] {
   let tls: Bool = match string_compare(req.url.scheme, "https") {
     Equal => true,
@@ -175,23 +273,27 @@ fn fetch_single(req: Request, head: Bool) -> Result[(String, Response), String] 
           let _: Result[Unit, NetError] = close(conn);
           Err(net_error_to_string(e))
         },
-        Ok(_) => match recv_all(conn) {
-          Err(e) => {
-            let _: Result[Unit, NetError] = close(conn);
-            Err(net_error_to_string(e))
-          },
-          Ok(resp_bytes) => {
-            let _: Result[Unit, NetError] = close(conn);
-            let version: String = extract_http_version(resp_bytes, 0);
-            let parse_result: Result[Response, String] = match head {
-              true => parse_head_response(resp_bytes),
-              false => parse_response(resp_bytes),
-            };
-            match parse_result {
-              Err(e) => Err(e),
-              Ok(resp) => Ok((version, resp)),
-            }
-          },
+        Ok(_) => {
+          let result: Result[(String, Response), String] = match recv_headers(conn, byte_array_empty()) {
+            Err(e) => Err(e),
+            Ok((acc, blank_pos)) => {
+              let version: String = extract_http_version(acc, 0);
+              let body_start: Int = blank_pos + 4;
+              let header_bytes: ByteArray = byte_array_slice(acc, 0, body_start);
+              match parse_head_response(header_bytes) {
+                Err(e) => Err(e),
+                Ok(head_resp) => match head {
+                  true => Ok((version, head_resp)),
+                  false => match fetch_body(conn, head_resp, acc, body_start) {
+                    Err(e) => Err(e),
+                    Ok(resp) => Ok((version, resp)),
+                  },
+                },
+              }
+            },
+          };
+          let _: Result[Unit, NetError] = close(conn);
+          result
         },
       }
     },
