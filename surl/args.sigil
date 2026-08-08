@@ -19,7 +19,6 @@ type Config = {
   cookie: String,
   cookie_jar: String,
   verbose: Bool,
-  insecure: Bool,
 }
 
 fn usage() -> String ![] {
@@ -324,7 +323,6 @@ fn parse_args(argv: List[String]) -> Result[Config, String] ![] {
         cookie: cookie,
         cookie_jar: cookie_jar,
         verbose: verbose,
-        insecure: false,
       })
     },
   }

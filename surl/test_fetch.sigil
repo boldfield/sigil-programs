@@ -1,12 +1,34 @@
 // Serverless driver for surl/fetch: point fetch at a port nothing is
 // listening on (127.0.0.1:1) so connect is refused deterministically,
 // and assert fetch surfaces that as an Err. No server, no flakiness.
+//
+// Also covers two regressions purely with pure-function checks (no
+// socket involved, so nothing here is network-flaky):
+//
+// - the TLS diagnostic must not be collapsed to a generic string
+//   (see net_error_to_string in fetch.sigil) — this is what made the
+//   "every HTTPS request fails" investigation in
+//   docs/fixes/surl-tls-failure-and-dead-insecure-flag.md need a
+//   manual repro instead of reading the error message;
+// - std.url's default_port(scheme) returns 80 for every scheme
+//   (including https), which is the actual root cause behind that
+//   investigation — fetch.parse_url_with_port_fix corrects an https
+//   URL with no explicit port from the broken default of 80 to 443,
+//   while leaving every other case (explicit non-80 ports, an
+//   explicit "https://host:80", plain http) untouched. The port fix
+//   has to look at the raw URL text, not the parsed Url record —
+//   the parsed record has already lost the distinction between
+//   "port omitted" and "port explicitly 80" — so
+//   fetch.url_has_explicit_port is covered directly too, including
+//   the case a naive scan would get wrong (a ':' inside the query
+//   string that isn't a port at all).
 import std.byte_array
 import std.http
 import std.io
 import std.list
 import std.mem
 import std.net
+import std.ordering
 import std.result
 import std.string
 import std.url
@@ -16,9 +38,90 @@ use std.http.{Request};
 use std.io.{IO};
 use std.list.{Nil};
 use std.mem.{Mem};
+use std.net.{TlsError};
 use std.result.{Err, Ok};
-use std.string.{string_concat};
+use std.string.{string_concat, string_compare};
+use std.ordering.{Equal};
 use std.url.{Url};
+
+fn check_int(label: String, got: Int, want: Int) -> Bool ![IO] {
+  match got == want {
+    true => {
+      perform IO.println(string_concat("PASS: ", label));
+      true
+    },
+    false => {
+      perform IO.println(string_concat("FAIL: ", label));
+      false
+    },
+  }
+}
+
+fn check_string(label: String, got: String, want: String) -> Bool ![IO] {
+  match string_compare(got, want) {
+    Equal => {
+      perform IO.println(string_concat("PASS: ", label));
+      true
+    },
+    _ => {
+      perform IO.println(string_concat("FAIL: ", string_concat(label, string_concat(" got: ", got))));
+      false
+    },
+  }
+}
+
+fn check_true(label: String, got: Bool) -> Bool ![IO] {
+  match got {
+    true => {
+      perform IO.println(string_concat("PASS: ", label));
+      true
+    },
+    false => {
+      perform IO.println(string_concat("FAIL: ", label));
+      false
+    },
+  }
+}
+
+fn check_false(label: String, got: Bool) -> Bool ![IO] {
+  match got {
+    false => {
+      perform IO.println(string_concat("PASS: ", label));
+      true
+    },
+    true => {
+      perform IO.println(string_concat("FAIL: ", label));
+      false
+    },
+  }
+}
+
+// A TLS handshake failure's message payload must survive unmodified —
+// it must not be reduced to a fixed literal (e.g. "TLS error") that
+// would hide which of many possible causes actually failed.
+fn check_tls_diagnostic_forwarded() -> Bool ![IO] {
+  let msg: String = "certificate verify failed: unable to get local issuer certificate";
+  check_string("TLS diagnostic forwarded unmodified", fetch.net_error_to_string(TlsError(msg)), msg)
+}
+
+fn port_of(raw: String) -> Int ![] {
+  match fetch.parse_url_with_port_fix(raw) {
+    Ok(u) => u.port,
+    Err(_) => -1,
+  }
+}
+
+fn check_port_defaulting() -> Bool ![IO] {
+  let implicit_https_ok: Bool = check_int("implicit https port (std.url's broken default of 80) corrected to 443", port_of("https://example.com/path"), 443);
+  let explicit_https_ok: Bool = check_int("explicit non-80 https port left untouched", port_of("https://example.com:8443/path"), 8443);
+  let explicit_80_ok: Bool = check_int("explicit https port 80 left untouched, not silently rewritten to 443", port_of("https://example.com:80/path"), 80);
+  let http_ok: Bool = check_int("plain http port left untouched", port_of("http://example.com/path"), 80);
+  let no_port_detected_ok: Bool = check_false("no colon in authority: no explicit port detected", fetch.url_has_explicit_port("https://example.com/path"));
+  let explicit_port_detected_ok: Bool = check_true("colon in authority: explicit port detected", fetch.url_has_explicit_port("https://example.com:8443/path"));
+  let query_colon_ok: Bool = check_false("colon in query string (with path) is not mistaken for an explicit port", fetch.url_has_explicit_port("https://example.com/path?a=1:2"));
+  let query_only_colon_ok: Bool = check_false("colon in query string (no path) is not mistaken for an explicit port", fetch.url_has_explicit_port("https://example.com?a=1:2"));
+  implicit_https_ok && explicit_https_ok && explicit_80_ok && http_ok && no_port_detected_ok && explicit_port_detected_ok && query_colon_ok && query_only_colon_ok
+}
 
 fn main() -> Int ![IO, Net, Mem] {
   let url: Url = Url {
@@ -34,14 +137,26 @@ fn main() -> Int ![IO, Net, Mem] {
     headers: Nil,
     body: string_to_bytes(""),
   };
-  match fetch.fetch(req, false, false) {
+  let refused_ok: Bool = match fetch.fetch(req, false, false) {
     Ok(_) => {
       perform IO.println("FAIL: expected Err connecting to refused port");
-      1
+      false
     },
     Err(msg) => {
       perform IO.println(string_concat("PASS: refused connect returned Err: ", msg));
-      0
+      true
     },
+  };
+  let diagnostic_ok: Bool = check_tls_diagnostic_forwarded();
+  let port_ok: Bool = check_port_defaulting();
+  match refused_ok {
+    true => match diagnostic_ok {
+      true => match port_ok {
+        true => 0,
+        false => 1,
+      },
+      false => 1,
+    },
+    false => 1,
   }
 }

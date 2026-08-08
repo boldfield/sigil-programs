@@ -23,7 +23,6 @@ fn print_config(config: Config) -> Int ![IO] {
   perform IO.println(string_concat("follow: ", bool_to_string(config.follow)));
   perform IO.println(string_concat("user: ", config.user));
   perform IO.println(string_concat("verbose: ", bool_to_string(config.verbose)));
-  perform IO.println(string_concat("insecure: ", bool_to_string(config.insecure)));
   0
 }
 

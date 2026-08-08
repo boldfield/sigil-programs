@@ -28,7 +28,7 @@ import std.url
 use std.byte_array.{byte_array_concat, byte_array_empty, byte_array_get_opt, byte_array_length, byte_array_slice, byte_array_slice_opt, byte_to_int, string_from_bytes, string_to_bytes};
 use std.char.{to_lower_ascii};
 use std.http.{Header, Request, Response, find_blank_line, parse_chunked_body, parse_status_line, serialize_request};
-use std.list.{Cons, List, Nil};
+use std.list.{Cons, List, Nil, length, reverse};
 use std.mem.{Mem};
 use std.net.{Closed, Conn, ConnectionRefused, NetError, Other, ResolveFailed, TlsError, close, connect, recv, send};
 use std.ordering.{Equal, string_compare};
@@ -331,6 +331,75 @@ fn fetch_body(conn: Conn, head_resp: Response, acc: ByteArray, body_start: Int) 
   }
 }
 
+// std.url's default_port(scheme) returns 80 for every scheme, https
+// included, so a URL with no explicit port (the overwhelming common
+// case — "https://example.com", not "https://example.com:443") parses
+// with port 80 rather than 443. That is the entire cause of "every
+// HTTPS request fails": surl asks std.net.connect for a TLS handshake
+// against the plaintext HTTP port, which the peer answers with a plain
+// HTTP response instead of a TLS ServerHello, so the handshake fails
+// and std.net reports it as a generic TlsError. See
+// docs/fixes/surl-tls-failure-and-dead-insecure-flag.md for the full
+// investigation and the upstream report against std.url.
+//
+// Correct it here rather than upstream in std.url. The parsed `Url`
+// record has already lost the distinction between "port was omitted"
+// and "port was explicitly 80" (both parse to `port: 80`), so the fix
+// has to look at the raw URL text, not the parsed struct — otherwise
+// an explicit "https://host:80" would be silently rewritten to 443
+// too, which is wrong (and was flagged in review: curl treats that URL
+// as a literal, doomed-to-fail TLS-on-port-80 request, not a typo).
+
+// Truncate `s` at the first occurrence of `sep`, or return `s`
+// unchanged if `sep` does not occur.
+fn split_head(s: String, sep: String) -> String ![] {
+  match string_split(s, sep) {
+    Cons(h, _) => h,
+    Nil => s,
+  }
+}
+
+// The "host[:port]" authority component of a URL: the substring after
+// "scheme://" up to (not including) the first '/', '?', or '#', with
+// any "user:pass@" userinfo prefix stripped.
+fn url_authority(raw: String) -> String ![] {
+  match string_split(raw, "://") {
+    Cons(_, Cons(rest, _)) => {
+      let before_path: String = split_head(split_head(split_head(rest, "/"), "?"), "#");
+      match reverse(string_split(before_path, "@")) {
+        Cons(host_port, _) => host_port,
+        Nil => before_path,
+      }
+    },
+    _ => raw,
+  }
+}
+
+// True if the URL's authority component names a port explicitly
+// (e.g. "example.com:8443" or, deliberately, "example.com:80") rather
+// than leaving it for std.url.default_port to fill in.
+fn url_has_explicit_port(raw: String) -> Bool ![] {
+  length(string_split(url_authority(raw), ":")) > 1
+}
+
+// Parse a URL and correct std.url's broken https default port: only
+// when the port was left unspecified (per url_has_explicit_port) is an
+// https URL's port corrected from the buggy default_port(80) to 443.
+// An explicit port — including the legitimate-but-doomed
+// "https://host:80" — always passes through unchanged.
+fn parse_url_with_port_fix(raw: String) -> Result[Url, String] ![] {
+  match parse_url(raw) {
+    Err(e) => Err(e),
+    Ok(u) => match string_compare(u.scheme, "https") {
+      Equal => match url_has_explicit_port(raw) {
+        true => Ok(u),
+        false => Ok(Url { scheme: u.scheme, host: u.host, port: 443, path: u.path, query: u.query }),
+      },
+      _ => Ok(u),
+    },
+  }
+}
+
 // fetch_single: connect, send the serialized request, read only as much of
 // the response as its own framing requires, close, and return the HTTP
 // version plus the parsed Response. The connection is closed on every
@@ -395,7 +464,7 @@ fn fetch_with_redirects(req: Request, head: Bool, follow: Bool, hops: Int) -> Re
             false => Ok((version, resp)),
             true => match find_header(resp.headers, "Location") {
               None => Ok((version, resp)),
-              Some(location) => match parse_url(location) {
+              Some(location) => match parse_url_with_port_fix(location) {
                 Ok(new_url) => {
                   let abs_req: Request = Request {
                     method: "GET",
