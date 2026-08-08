@@ -1,14 +1,22 @@
 // surl/fetch — drive one HTTP/1.1 Request over the wire and return the
-// parsed Response. Serialization and response parsing are delegated to
-// std.http (serialize_request / parse_response) exactly as the task
-// requires, so Content-Length and Transfer-Encoding: chunked are handled
-// by the stdlib rather than re-implemented here. Those two stdlib calls
+// parsed Response. Serialization and status/header parsing are delegated
+// to std.http (serialize_request / parse_status_line) exactly as the
+// task requires. Deciding *how much* body to read, and de-chunking a
+// chunked body, is done here with local, case-insensitive
+// Content-Length/Transfer-Encoding lookups (see find_content_length_ci /
+// find_transfer_encoding_chunked_ci below) plus std.http's own chunk
+// parser (parse_chunked_body) — std.http's find_content_length /
+// find_transfer_encoding_chunked, and its higher-level parse_response
+// which dispatches through the same header lookups, match header names
+// exactly and miss a server that sends lowercase field names, which
+// reads as "no framing" and silently drops the body. Those stdlib calls
 // carry the ![Mem] effect, so fetch's row is ![Net, Mem] — the literal
 // ![Net] from the signature sketch is unsatisfiable while still calling
 // the requested std.http helpers (they perform Mem), and a compilable
 // signature that actually uses std.http is what the acceptance gate
 // (compiles + make test-surl passes) needs.
 import std.byte_array
+import std.char
 import std.http
 import std.list
 import std.mem
@@ -18,13 +26,14 @@ import std.result
 import std.string
 import std.url
 use std.byte_array.{byte_array_concat, byte_array_empty, byte_array_get_opt, byte_array_length, byte_array_slice, byte_array_slice_opt, byte_to_int, string_from_bytes, string_to_bytes};
-use std.http.{Header, Request, Response, find_content_length, find_transfer_encoding_chunked, find_blank_line, parse_chunked_body, parse_response, parse_status_line, serialize_request};
+use std.char.{to_lower_ascii};
+use std.http.{Header, Request, Response, find_blank_line, parse_chunked_body, parse_status_line, serialize_request};
 use std.list.{Cons, List, Nil};
 use std.mem.{Mem};
 use std.net.{Closed, Conn, ConnectionRefused, NetError, Other, ResolveFailed, TlsError, close, connect, recv, send};
 use std.ordering.{Equal, string_compare};
 use std.result.{Err, Ok, Result};
-use std.string.{string_split};
+use std.string.{string_chars, string_from_chars, string_split, string_to_int};
 use std.url.{Url, parse_url, default_port};
 
 // Render a NetError as a human-readable String for the Result's error arm.
@@ -47,6 +56,57 @@ fn find_header(headers: List[Header], name: String) -> Option[String] ![] {
         Equal => Some(h.value),
         _ => find_header(rest, name),
       }
+    },
+  }
+}
+
+fn lower_ascii_chars(cs: List[Char]) -> List[Char] ![] {
+  match cs {
+    Nil => Nil,
+    Cons(c, rest) => Cons(to_lower_ascii(c), lower_ascii_chars(rest)),
+  }
+}
+
+fn lower_ascii(s: String) -> String ![] {
+  string_from_chars(lower_ascii_chars(string_chars(s)))
+}
+
+// Find a header value by name, case-insensitively. HTTP field names are
+// case-insensitive (RFC 9110 §5.1) and the response parser preserves the
+// casing the server sent, so match against the ASCII-lowercased name —
+// std.http.find_content_length / find_transfer_encoding_chunked match
+// "Content-Length" / "Transfer-Encoding" exactly and miss a server that
+// sends lowercase field names, which stalls the read waiting for framing
+// it already received but didn't recognise.
+fn find_header_ci(headers: List[Header], name_lower: String) -> Option[String] ![] {
+  match headers {
+    Nil => None,
+    Cons(h, rest) => match string_compare(lower_ascii(h.name), name_lower) {
+      Equal => Some(h.value),
+      _ => find_header_ci(rest, name_lower),
+    },
+  }
+}
+
+// Content-Length, found case-insensitively and parsed to an Int.
+fn find_content_length_ci(headers: List[Header]) -> Option[Int] ![] {
+  match find_header_ci(headers, "content-length") {
+    None => None,
+    Some(v) => match string_to_int(v) {
+      Ok(n) => Some(n),
+      Err(_) => None,
+    },
+  }
+}
+
+// Transfer-Encoding: chunked, found case-insensitively. The value token
+// is case-insensitive too (RFC 9110 §5.6.2), so lowercase it as well.
+fn find_transfer_encoding_chunked_ci(headers: List[Header]) -> Bool ![] {
+  match find_header_ci(headers, "transfer-encoding") {
+    None => false,
+    Some(v) => match string_compare(lower_ascii(v), "chunked") {
+      Equal => true,
+      _ => false,
     },
   }
 }
@@ -191,12 +251,15 @@ fn recv_until_length(conn: Conn, acc: ByteArray, target: Int) -> Result[ByteArra
   }
 }
 
-// Keep reading until std.http's own chunk parser can reassemble a full
-// body from `body_start` onward (it returns Err while the terminating
-// zero-length chunk hasn't arrived yet), or the peer closes early.
-fn recv_until_chunked_complete(conn: Conn, acc: ByteArray, body_start: Int) -> Result[ByteArray, String] ![Net, Mem] {
+// Keep reading until std.http's own chunk parser can reassemble a full,
+// de-chunked body from `body_start` onward (it returns Err while the
+// terminating zero-length chunk hasn't arrived yet), or the peer closes
+// early. Returns the raw (still chunk-framed) accumulated bytes, plus
+// the de-chunked body std.http already produced while checking
+// completeness — reused by the caller instead of re-deriving it.
+fn recv_until_chunked_complete(conn: Conn, acc: ByteArray, body_start: Int) -> Result[(ByteArray, ByteArray), String] ![Net, Mem] {
   match parse_chunked_body(acc, body_start) {
-    Ok(_) => Ok(acc),
+    Ok(body) => Ok((acc, body)),
     Err(_) => match recv(conn, 65536) {
       Err(e) => Err(net_error_to_string(e)),
       Ok(chunk) => match byte_array_length(chunk) == 0 {
@@ -221,23 +284,39 @@ fn recv_to_eof(conn: Conn, acc: ByteArray) -> Result[ByteArray, String] ![Net] {
 }
 
 // Read and assemble the response body for a non-HEAD request, honouring
-// whichever framing the already-parsed headers declare. For
-// Content-Length and chunked framing, std.http.parse_response is reused
-// once enough bytes are buffered so body extraction stays in one place.
-// For the close-delimited fallback (neither framing present),
-// parse_response leaves the body empty (it has no way to know where the
-// body ends other than being told), so that one case is assembled here
-// from the headers already parsed plus everything read to EOF.
+// whichever framing the already-parsed headers declare. head_resp already
+// carries the parsed status/reason/headers (from parse_head_response), so
+// each branch below only needs to supply the body bytes; std.http's own
+// chunk parser (parse_chunked_body) is reused for de-chunking rather than
+// re-implementing it, and Content-Length/close-delimited bodies are plain
+// slices of the accumulated bytes. This does not re-dispatch through
+// std.http.parse_response for the framing decision, because that
+// dispatch is exactly as case-sensitive about Content-Length /
+// Transfer-Encoding as std.http.find_content_length /
+// find_transfer_encoding_chunked are (see find_content_length_ci /
+// find_transfer_encoding_chunked_ci above) — reusing it here would
+// silently re-lose the lowercase-header fix by re-deciding "no framing
+// present" a second time and returning an empty body.
 fn fetch_body(conn: Conn, head_resp: Response, acc: ByteArray, body_start: Int) -> Result[Response, String] ![Net, Mem] {
-  match find_transfer_encoding_chunked(head_resp.headers) {
+  match find_transfer_encoding_chunked_ci(head_resp.headers) {
     true => match recv_until_chunked_complete(conn, acc, body_start) {
       Err(e) => Err(e),
-      Ok(full) => parse_response(full),
+      Ok((_, body)) => Ok(Response {
+        status: head_resp.status,
+        reason: head_resp.reason,
+        headers: head_resp.headers,
+        body: body,
+      }),
     },
-    false => match find_content_length(head_resp.headers) {
+    false => match find_content_length_ci(head_resp.headers) {
       Some(len) => match recv_until_length(conn, acc, body_start + len) {
         Err(e) => Err(e),
-        Ok(full) => parse_response(full),
+        Ok(full) => Ok(Response {
+          status: head_resp.status,
+          reason: head_resp.reason,
+          headers: head_resp.headers,
+          body: byte_array_slice(full, body_start, body_start + len),
+        }),
       },
       None => match recv_to_eof(conn, acc) {
         Err(e) => Err(e),

@@ -77,6 +77,37 @@ else
   exit 1
 fi
 
+# Test non-canonical header casing on the framing headers themselves:
+# HTTP field names are case-insensitive (RFC 9110 §5.1), and a server
+# that sends "content-length"/"transfer-encoding" in lowercase is just
+# as legitimate as one that sends the canonical casing. surl previously
+# matched those two names exactly, so a lowercase field name read as "no
+# framing declared" and either hung waiting for EOF that never came or
+# silently dropped the body.
+surl_length_lower=$(timeout 10 bin/main "http://127.0.0.1:$port/length-lower")
+curl_length_lower=$(curl -s "http://127.0.0.1:$port/length-lower")
+
+if [ "$surl_length_lower" = "$curl_length_lower" ]; then
+  echo "✓ surl matches curl against a lowercase content-length header"
+else
+  echo "✗ surl does not match curl against a lowercase content-length header"
+  echo "  surl: '$surl_length_lower'"
+  echo "  curl: '$curl_length_lower'"
+  exit 1
+fi
+
+surl_chunked_lower=$(timeout 10 bin/main "http://127.0.0.1:$port/chunked-lower")
+curl_chunked_lower=$(curl -s "http://127.0.0.1:$port/chunked-lower")
+
+if [ "$surl_chunked_lower" = "$curl_chunked_lower" ]; then
+  echo "✓ surl matches curl against a lowercase transfer-encoding header"
+else
+  echo "✗ surl does not match curl against a lowercase transfer-encoding header"
+  echo "  surl: '$surl_chunked_lower'"
+  echo "  curl: '$curl_chunked_lower'"
+  exit 1
+fi
+
 # Test close-delimited response (no Content-Length, not chunked) against
 # the HTTP/1.0 server: the only legitimate way to delimit this body is the
 # connection closing, and surl must still return rather than hang.

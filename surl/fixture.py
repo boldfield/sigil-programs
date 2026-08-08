@@ -28,6 +28,29 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
             for part in (b"hello ", b"chunked ", b"world"):
                 self.wfile.write(b"%x\r\n%s\r\n" % (len(part), part))
             self.wfile.write(b"0\r\n\r\n")
+        elif self.path == "/chunked-lower":
+            # Non-canonical header casing on the framing header itself:
+            # field names are case-insensitive (RFC 9110), so surl must
+            # still detect chunked framing and read to the terminating
+            # zero-length chunk, not hang. send_header writes the name
+            # verbatim.
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.send_header("transfer-encoding", "chunked")
+            self.end_headers()
+            for part in (b"hello ", b"chunked ", b"world"):
+                self.wfile.write(b"%x\r\n%s\r\n" % (len(part), part))
+            self.wfile.write(b"0\r\n\r\n")
+        elif self.path == "/length-lower":
+            # Non-canonical header casing on Content-Length: surl must
+            # still detect the framing and read exactly that many bytes,
+            # not hang waiting for connection close.
+            body = b"lowercase content-length body"
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         elif self.path == "/close-delim":
             # No Content-Length and not chunked, so the only way to know
             # the body is complete is the connection closing. Force the
