@@ -76,7 +76,6 @@ fn main() -> Int ![IO] {
     cookie: "",
     cookie_jar: "",
     verbose: false,
-    insecure: false,
   };
 
   match build_request(config) {

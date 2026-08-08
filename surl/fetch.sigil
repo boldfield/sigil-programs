@@ -331,6 +331,33 @@ fn fetch_body(conn: Conn, head_resp: Response, acc: ByteArray, body_start: Int) 
   }
 }
 
+// std.url's default_port(scheme) returns 80 for every scheme, https
+// included, so a URL with no explicit port (the overwhelming common
+// case — "https://example.com", not "https://example.com:443") parses
+// with port 80 rather than 443. That is the entire cause of "every
+// HTTPS request fails": surl asks std.net.connect for a TLS handshake
+// against the plaintext HTTP port, which the peer answers with a plain
+// HTTP response instead of a TLS ServerHello, so the handshake fails
+// and std.net reports it as a generic TlsError. See
+// docs/fixes/surl-tls-failure-and-dead-insecure-flag.md for the full
+// investigation and the upstream report against std.url.
+//
+// Correct it here rather than upstream in std.url: an https URL whose
+// parsed port is exactly 80 is corrected to 443. This is deliberately
+// narrow — any explicit non-80 port (including the legitimate
+// "https://host:8443") passes through unchanged — because nothing
+// serves TLS on 80 in practice, so "https + port 80" is unambiguously
+// the unset-port case, not a real request for TLS-on-80.
+fn effective_port(url: Url) -> Int ![] {
+  match string_compare(url.scheme, "https") {
+    Equal => match url.port == 80 {
+      true => 443,
+      false => url.port,
+    },
+    _ => url.port,
+  }
+}
+
 // fetch_single: connect, send the serialized request, read only as much of
 // the response as its own framing requires, close, and return the HTTP
 // version plus the parsed Response. The connection is closed on every
@@ -343,7 +370,7 @@ fn fetch_single(req: Request, head: Bool) -> Result[(String, Response), String] 
     Equal => true,
     _ => false,
   };
-  match connect(req.url.host, req.url.port, tls) {
+  match connect(req.url.host, effective_port(req.url), tls) {
     Err(e) => Err(net_error_to_string(e)),
     Ok(conn) => {
       let payload: ByteArray = serialize_request(req);
