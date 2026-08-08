@@ -12,9 +12,16 @@
 //   manual repro instead of reading the error message;
 // - std.url's default_port(scheme) returns 80 for every scheme
 //   (including https), which is the actual root cause behind that
-//   investigation — fetch.effective_port corrects an https URL with
-//   the unset-port default of 80 to 443, and must leave every other
-//   case (explicit non-80 ports, plain http) untouched.
+//   investigation — fetch.parse_url_with_port_fix corrects an https
+//   URL with no explicit port from the broken default of 80 to 443,
+//   while leaving every other case (explicit non-80 ports, an
+//   explicit "https://host:80", plain http) untouched. The port fix
+//   has to look at the raw URL text, not the parsed Url record —
+//   the parsed record has already lost the distinction between
+//   "port omitted" and "port explicitly 80" — so
+//   fetch.url_has_explicit_port is covered directly too, including
+//   the case a naive scan would get wrong (a ':' inside the query
+//   string that isn't a port at all).
 import std.byte_array
 import std.http
 import std.io
@@ -63,6 +70,32 @@ fn check_string(label: String, got: String, want: String) -> Bool ![IO] {
   }
 }
 
+fn check_true(label: String, got: Bool) -> Bool ![IO] {
+  match got {
+    true => {
+      perform IO.println(string_concat("PASS: ", label));
+      true
+    },
+    false => {
+      perform IO.println(string_concat("FAIL: ", label));
+      false
+    },
+  }
+}
+
+fn check_false(label: String, got: Bool) -> Bool ![IO] {
+  match got {
+    false => {
+      perform IO.println(string_concat("PASS: ", label));
+      true
+    },
+    true => {
+      perform IO.println(string_concat("FAIL: ", label));
+      false
+    },
+  }
+}
+
 // A TLS handshake failure's message payload must survive unmodified —
 // it must not be reduced to a fixed literal (e.g. "TLS error") that
 // would hide which of many possible causes actually failed.
@@ -71,25 +104,23 @@ fn check_tls_diagnostic_forwarded() -> Bool ![IO] {
   check_string("TLS diagnostic forwarded unmodified", fetch.net_error_to_string(TlsError(msg)), msg)
 }
 
-fn https_url(port: Int) -> Url ![] {
-  Url { scheme: "https", host: "example.com", port: port, path: "/", query: "" }
-}
-
-fn http_url(port: Int) -> Url ![] {
-  Url { scheme: "http", host: "example.com", port: port, path: "/", query: "" }
+fn port_of(raw: String) -> Int ![] {
+  match fetch.parse_url_with_port_fix(raw) {
+    Ok(u) => u.port,
+    Err(_) => -1,
+  }
 }
 
 fn check_port_defaulting() -> Bool ![IO] {
-  let implicit_https_ok: Bool = check_int("implicit https port (80, std.url's broken default) corrected to 443", fetch.effective_port(https_url(80)), 443);
-  let explicit_https_ok: Bool = check_int("explicit non-80 https port left untouched", fetch.effective_port(https_url(8443)), 8443);
-  let http_ok: Bool = check_int("plain http port 80 left untouched", fetch.effective_port(http_url(80)), 80);
-  match implicit_https_ok {
-    true => match explicit_https_ok {
-      true => http_ok,
-      false => false,
-    },
-    false => false,
-  }
+  let implicit_https_ok: Bool = check_int("implicit https port (std.url's broken default of 80) corrected to 443", port_of("https://example.com/path"), 443);
+  let explicit_https_ok: Bool = check_int("explicit non-80 https port left untouched", port_of("https://example.com:8443/path"), 8443);
+  let explicit_80_ok: Bool = check_int("explicit https port 80 left untouched, not silently rewritten to 443", port_of("https://example.com:80/path"), 80);
+  let http_ok: Bool = check_int("plain http port left untouched", port_of("http://example.com/path"), 80);
+  let no_port_detected_ok: Bool = check_false("no colon in authority: no explicit port detected", fetch.url_has_explicit_port("https://example.com/path"));
+  let explicit_port_detected_ok: Bool = check_true("colon in authority: explicit port detected", fetch.url_has_explicit_port("https://example.com:8443/path"));
+  let query_colon_ok: Bool = check_false("colon in query string (with path) is not mistaken for an explicit port", fetch.url_has_explicit_port("https://example.com/path?a=1:2"));
+  let query_only_colon_ok: Bool = check_false("colon in query string (no path) is not mistaken for an explicit port", fetch.url_has_explicit_port("https://example.com?a=1:2"));
+  implicit_https_ok && explicit_https_ok && explicit_80_ok && http_ok && no_port_detected_ok && explicit_port_detected_ok && query_colon_ok && query_only_colon_ok
 }
 
 fn main() -> Int ![IO, Net, Mem] {

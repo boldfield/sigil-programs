@@ -1,20 +1,20 @@
 import std.http
-import std.url
 import std.list
 import std.byte_array
 import std.string
 import std.option
 import args
 import base64
+import fetch
 
 use std.http.{Request, Header};
-use std.url.{parse_url};
 use std.list.{Cons, Nil, append};
 use std.byte_array.{string_to_bytes};
 use std.string.{string_compare, string_concat};
 use std.option.{None, Option, Some};
 use args.{Config};
 use base64.{base64_encode};
+use fetch.{parse_url_with_port_fix};
 
 fn tuple_to_header(t: (String, String)) -> Header ![] {
   match t {
@@ -49,7 +49,7 @@ fn make_cookie_header(cookie: String) -> Option[Header] ![] {
 }
 
 fn build_request(c: Config) -> Result[Request, String] ![] {
-  match parse_url(c.url) {
+  match parse_url_with_port_fix(c.url) {
     Ok(url_obj) => {
       let host_header: Header = Header { name: "Host", value: url_obj.host };
       let custom_headers: List[Header] = headers_from_tuples(c.headers);
